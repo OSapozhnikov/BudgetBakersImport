@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Конвертація — BudgetBakers Import{% endblock %}
+{% block content %}
+<section class="hero-block enter">
+  <p class="eyebrow">Конвертація</p>
+  <h1>Excel → CSV</h1>
+  <p class="lead">
+    Завантажте банківську Excel-виписку (.xlsx). Суми в USD/EUR конвертуються в UAH за курсом НБУ
+    на дату операції. Усі рядки потрапляють на один рахунок з довідника.
+  </p>
+</section>
+
+{% if not accounts %}
+<div class="alert alert-warn enter">
+  Довідник рахунків порожній.
+  Спочатку <a href="/settings/accounts">додайте або завантажте рахунки</a>.
+</div>
+{% endif %}
+
+<form class="panel enter" action="/convert" method="post" enctype="multipart/form-data">
+  <label class="field">
+    <span>Файл Excel</span>
+    <input type="file" name="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required {% if not accounts %}disabled{% endif %}>
+  </label>
+
+  <label class="field">
+    <span>Рахунок BudgetBakers</span>
+    {% if accounts %}
+    <select name="account_name" required>
+      {% for acc in accounts %}
+      <option value="{{ acc.name }}" {% if selected_account == acc.name %}selected{% endif %}>{{ acc.name }}</option>
+      {% endfor %}
+    </select>
+    <small>Список з <a href="/settings/accounts">довідника рахунків</a>. Однакова назва для всіх рядків.</small>
+    {% else %}
+    <select name="account_name" disabled>
+      <option value="">— немає рахунків —</option>
+    </select>
+    {% endif %}
+  </label>
+
+  <button type="submit" class="btn primary block" {% if not accounts %}disabled{% endif %}>Конвертувати та переглянути</button>
+</form>
+
+<aside class="hints enter">
+  <h2>Що робить додаток</h2>
+  <ul>
+    <li>Бере лише рядки зі статусом «Виконано»</li>
+    <li>Мапить ₴ / грн → UAH; інші валюти — через НБУ</li>
+    <li>Підставляє категорії з <a href="/settings/categories">мапінгу</a>; якщо мапінгу немає — залишає категорію з файлу імпорту</li>
+    <li>Віддає CSV з BOM, роздільник <code>,</code></li>
+  </ul>
+</aside>
+{% endblock %}

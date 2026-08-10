@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Перегляд — BudgetBakers Import{% endblock %}
+{% block content %}
+<section class="hero-block enter">
+  <p class="eyebrow">Конвертація</p>
+  <h1>Попередній перегляд конвертації</h1>
+  <p class="lead">
+    Перевірте підсумок і перші рядки перед завантаженням CSV.
+  </p>
+</section>
+
+<div class="stats enter">
+  <div class="stat">
+    <span class="n">{{ total_rows_display }}</span>
+    <span class="l">Рядків після фільтрації</span>
+  </div>
+  <div class="stat">
+    <span class="n">{{ total_amount_uah_display }}</span>
+    <span class="l">Сума UAH</span>
+  </div>
+  <div class="stat">
+    <span class="n text">{{ account_name }}</span>
+    <span class="l">Рахунок</span>
+  </div>
+  <div class="stat">
+    <span class="n text">{{ filename }}</span>
+    <span class="l">Файл</span>
+  </div>
+</div>
+
+<div class="actions enter">
+  <a class="btn primary" href="/download/{{ job_id }}">Завантажити CSV</a>
+  <a class="btn" href="/">← Назад до завантаження</a>
+</div>
+<p class="muted enter">Файл експорту: <code class="export-name">{{ export_filename }}</code></p>
+
+{% if unmapped_categories %}
+<div class="alert alert-warn enter">
+  Категорії без мапінгу (залишено оригінальні назви):
+  {{ unmapped_categories | join(", ") }}
+</div>
+{% endif %}
+
+{% if warnings %}
+<details class="warnings enter">
+  <summary>Попередження ({{ warning_total }})</summary>
+  <ul>
+    {% for w in warnings %}
+    <li>{{ w }}</li>
+    {% endfor %}
+    {% if warning_total > warnings|length %}
+    <li>…і ще {{ warning_total - warnings|length }}</li>
+    {% endif %}
+  </ul>
+</details>
+{% endif %}
+
+{% if fx_failures or converted_fx_count or skipped %}
+<p class="muted enter">
+  Пропущено: {{ skipped }} · FX-конверсій: {{ converted_fx_count }} · помилок курсу: {{ fx_failures }}
+</p>
+{% endif %}
+
+<p class="muted enter">Показано перші {{ rows|length }} з {{ total_rows }} рядків.</p>
+
+<div class="table-wrap enter">
+  <table>
+    <thead>
+      <tr>
+        <th>Дата</th>
+        <th>Опис</th>
+        <th>Категорія</th>
+        <th class="num">Сума (UAH)</th>
+        <th>Валюта</th>
+        <th class="num">Сума (ориг.)</th>
+        <th>Рахунок</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if r.unmapped %}row-warn{% endif %} {% if r.fx_warning %}row-fx{% endif %}">
+        <td class="num">{{ r.date.strftime('%d.%m.%Y') }}</td>
+        <td class="note">{{ r.note }}</td>
+        <td>
+          {{ r.category }}
+          {% if r.unmapped %}<span class="tag">без мапінгу</span>{% endif %}
+        </td>
+        <td class="num">{{ '%.2f'|format(r.amount|float) }}</td>
+        <td>₴</td>
+        <td class="num">{{ '%.2f'|format(r.original_amount|float) }} {{ r.original_currency }}</td>
+        <td>{{ r.account }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Категорії — BudgetBakers Import{% endblock %}
+{% block content %}
+<section class="hero-block enter">
+  <p class="eyebrow">Налаштування</p>
+  <h1>Мапінг категорій</h1>
+  <p class="lead">
+    Банківські категорії з останніх завантажень зіставляються з назвами категорій BudgetBakers.
+    Мапінг зберігається в <code>category_mappings.json</code>.
+    Якщо довідник BudgetBakers порожній або для категорії немає відповідника —
+    у CSV потрапляє назва категорії з файлу імпорту як є.
+  </p>
+</section>
+
+<div class="actions enter">
+  <form action="/settings/categories/refresh" method="post">
+    <button type="submit" class="btn primary" {% if not token_configured %}title="Спочатку задайте BUDGETBAKERS_API_TOKEN"{% endif %}>
+      Оновити з BudgetBakers API
+    </button>
+  </form>
+  <a class="btn" href="/">← До конвертації</a>
+</div>
+
+{% if not token_configured %}
+<div class="alert alert-warn enter">
+  Токен API не задано (<code>BUDGETBAKERS_API_TOKEN</code>). Можна вводити назви категорій вручну в полі нижче.
+</div>
+{% endif %}
+
+{% if not bank_categories %}
+<div class="alert enter">
+  Ще немає банківських категорій. Спочатку <a href="/">завантажте Excel</a> — список з’явиться тут.
+</div>
+{% else %}
+<form action="/settings/categories/save" method="post" class="panel enter">
+  <div class="table-wrap flat">
+    <table>
+      <thead>
+        <tr>
+          <th>Категорія з виписки</th>
+          <th>Категорія BudgetBakers</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bank in bank_categories %}
+        <tr>
+          <td>{{ bank }}</td>
+          <td>
+            <input type="hidden" name="bank_{{ loop.index0 }}" value="{{ bank }}">
+            {% if bb_names %}
+            <select name="map_{{ loop.index0 }}">
+              <option value="">— залишити як у файлі імпорту —</option>
+              {% for name in bb_names %}
+              <option value="{{ name }}" {% if mappings.get(bank) == name %}selected{% endif %}>{{ name }}</option>
+              {% endfor %}
+            </select>
+            {% if mappings.get(bank) and mappings.get(bank) not in bb_names %}
+            <div class="muted">Поточне: {{ mappings.get(bank) }}</div>
+            {% endif %}
+            {% else %}
+            <input type="text" name="map_{{ loop.index0 }}" value="{{ mappings.get(bank, '') }}" placeholder="Порожньо = як у файлі імпорту">
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <button type="submit" class="btn primary">Зберегти мапінг</button>
+</form>
+{% endif %}
+{% endblock %}

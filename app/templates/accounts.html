@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Рахунки — BudgetBakers Import{% endblock %}
+{% block content %}
+<section class="hero-block enter">
+  <p class="eyebrow">Налаштування</p>
+  <h1>Довідник рахунків</h1>
+  <p class="lead">
+    Рахунки BudgetBakers для колонки <code>Рахунок/картка</code> у CSV.
+    Можна підтягнути через API або додати назву вручну. Зберігається в
+    <code>accounts.json</code>.
+  </p>
+</section>
+
+<div class="actions enter">
+  <form action="/settings/accounts/refresh" method="post">
+    <button type="submit" class="btn primary" {% if not token_configured %}title="Спочатку задайте BUDGETBAKERS_API_TOKEN"{% endif %}>
+      Оновити з BudgetBakers API
+    </button>
+  </form>
+  <a class="btn" href="/">← До конвертації</a>
+</div>
+
+{% if not token_configured %}
+<div class="alert alert-warn enter">
+  Токен API не задано (<code>BUDGETBAKERS_API_TOKEN</code>). Можна додати назви рахунків вручну нижче.
+</div>
+{% endif %}
+
+<form action="/settings/accounts/add" method="post" class="panel inline-form enter">
+  <label class="field grow">
+    <span>Додати рахунок вручну</span>
+    <input type="text" name="name" maxlength="80" placeholder="{{ default_account }}" required>
+  </label>
+  <button type="submit" class="btn primary">Додати</button>
+</form>
+
+{% if not accounts %}
+<div class="alert enter">
+  Довідник порожній. Оновіть з API або додайте рахунок вручну — інакше конвертація недоступна.
+</div>
+{% else %}
+<div class="panel enter">
+  <div class="table-wrap flat">
+    <table>
+      <thead>
+        <tr>
+          <th>Назва</th>
+          <th>Джерело</th>
+          <th>ID</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for acc in accounts %}
+        <tr>
+          <td>{{ acc.name }}</td>
+          <td>{% if acc.source == "api" %}API{% else %}вручну{% endif %}</td>
+          <td class="muted">{{ acc.id or "—" }}</td>
+          <td>
+            <form action="/settings/accounts/delete" method="post" class="inline">
+              <input type="hidden" name="name" value="{{ acc.name }}">
+              <button type="submit" class="btn danger small">Видалити</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
