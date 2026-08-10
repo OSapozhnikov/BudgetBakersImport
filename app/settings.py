@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     default_account_name: str = "Account"
     data_dir: str = "./data"
 
-    budgetbakers_api_base: str = "https://api.budgetbakers.com/api/v1"
+    budgetbakers_api_base: str = "https://rest.budgetbakers.com/wallet/v1/api"
     budgetbakers_api_token: str = ""
 
     nbu_fx_lookback_days: int = 7

@@ -11,7 +11,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
       DEFAULT_ACCOUNT_NAME: ${DEFAULT_ACCOUNT_NAME:-Account}
-      BUDGETBAKERS_API_BASE: ${BUDGETBAKERS_API_BASE:-https://api.budgetbakers.com/api/v1}
+      BUDGETBAKERS_API_BASE: ${BUDGETBAKERS_API_BASE:-https://rest.budgetbakers.com/wallet/v1/api}
       BUDGETBAKERS_API_TOKEN: ${BUDGETBAKERS_API_TOKEN:-}
       NBU_FX_LOOKBACK_DAYS: ${NBU_FX_LOOKBACK_DAYS:-7}
     volumes:

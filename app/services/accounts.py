@@ -64,13 +64,15 @@ class BudgetBakersAccountsClient:
             resp = self._client.get(url, headers=headers, params=params)
             if resp.status_code == 401:
                 raise RuntimeError("BudgetBakers API: невірний або протермінований токен (401).")
+            if resp.status_code == 404:
+                raise RuntimeError(
+                    "BudgetBakers API: 404 для /accounts. "
+                    "Перевірте BUDGETBAKERS_API_BASE "
+                    "(очікується https://rest.budgetbakers.com/wallet/v1/api)."
+                )
             resp.raise_for_status()
             payload = resp.json()
             items = _extract_items(payload)
-            if not items:
-                # also try accounts key specifically
-                if isinstance(payload, dict) and isinstance(payload.get("accounts"), list):
-                    items = [x for x in payload["accounts"] if isinstance(x, dict)]
             if not items:
                 break
             for item in items:
@@ -80,9 +82,13 @@ class BudgetBakersAccountsClient:
                 if acc.archived and not include_archived:
                     continue
                 results.append(acc)
-            if len(items) < self.page_size:
-                break
-            offset += self.page_size
+            next_offset = payload.get("nextOffset") if isinstance(payload, dict) else None
+            if next_offset is None or next_offset == offset:
+                if len(items) < self.page_size:
+                    break
+                offset += self.page_size
+            else:
+                offset = int(next_offset)
 
         by_id = {a.id: a for a in results}
         return sorted(by_id.values(), key=lambda a: a.name.casefold())

@@ -50,8 +50,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 | `WEB_CONCURRENCY` | `1` | Uvicorn workers |
 | `DEFAULT_ACCOUNT_NAME` | `Account` | Preselected account when present in the directory |
 | `DATA_DIR` | `./data` | Durable data directory |
-| `BUDGETBAKERS_API_BASE` | `https://api.budgetbakers.com/api/v1` | API base URL |
-| `BUDGETBAKERS_API_TOKEN` | _(empty)_ | Bearer token for categories/accounts |
+| `BUDGETBAKERS_API_BASE` | `https://rest.budgetbakers.com/wallet/v1/api` | Wallet API base URL ([docs](https://rest.budgetbakers.com/wallet/reference)) |
+| `BUDGETBAKERS_API_TOKEN` | _(empty)_ | Bearer token for `GET /categories` and `GET /accounts` |
 | `NBU_FX_LOOKBACK_DAYS` | `7` | Days to walk back if NBU rate missing |
 
 Put secrets only in `.env` (gitignored), never in the image.

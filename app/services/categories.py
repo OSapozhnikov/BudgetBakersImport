@@ -65,6 +65,12 @@ class BudgetBakersCategoriesClient:
             resp = self._client.get(url, headers=headers, params=params)
             if resp.status_code == 401:
                 raise RuntimeError("BudgetBakers API: невірний або протермінований токен (401).")
+            if resp.status_code == 404:
+                raise RuntimeError(
+                    "BudgetBakers API: 404 для /categories. "
+                    "Перевірте BUDGETBAKERS_API_BASE "
+                    "(очікується https://rest.budgetbakers.com/wallet/v1/api)."
+                )
             resp.raise_for_status()
             payload = resp.json()
             items = _extract_items(payload)
@@ -74,9 +80,13 @@ class BudgetBakersCategoriesClient:
                 cat = _parse_category(item)
                 if cat:
                     results.append(cat)
-            if len(items) < self.page_size:
-                break
-            offset += self.page_size
+            next_offset = payload.get("nextOffset") if isinstance(payload, dict) else None
+            if next_offset is None or next_offset == offset:
+                if len(items) < self.page_size:
+                    break
+                offset += self.page_size
+            else:
+                offset = int(next_offset)
 
         # Deduplicate by id, then sort by name
         by_id = {c.id: c for c in results}
