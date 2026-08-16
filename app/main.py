@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
@@ -26,6 +26,7 @@ from app.services.categories import (
 )
 from app.services.csv_export import (
     ConversionResult,
+    ExportRow,
     build_csv,
     build_export_filename,
     convert_rows,
@@ -33,9 +34,11 @@ from app.services.csv_export import (
 from app.services.excel_parser import parse_excel
 from app.services.fx_nbu import NbuFxConverter
 from app.services.mapping_store import CategoryMappingStore
+from app.services.records import BudgetBakersRecordsClient, RecordImportResult
 from app.settings import Settings, get_settings
 
 APP_DIR = Path(__file__).resolve().parent
+IMPORT_ERROR_CAP = 20
 
 
 def _configure_logging(level: str) -> None:
@@ -48,20 +51,28 @@ def _configure_logging(level: str) -> None:
 
 @dataclass
 class JobStore:
-    """In-memory conversion jobs for preview → download (single-user stage 1)."""
+    """In-memory conversion jobs for preview → CSV download / API import."""
 
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-    def put(self, result: ConversionResult, account_name: str, filename: str) -> str:
+    def put(
+        self,
+        result: ConversionResult,
+        account_name: str,
+        filename: str,
+        account_id: str | None = None,
+    ) -> str:
         job_id = secrets.token_urlsafe(16)
         export_filename = build_export_filename(account_name, result.rows)
         self.jobs[job_id] = {
             "created_at": datetime.now(timezone.utc).isoformat(),
             "account_name": account_name,
+            "account_id": (account_id or "").strip() or None,
             "filename": filename,
             "export_filename": export_filename,
             "result": result,
             "csv": build_csv(result.rows),
+            "imported": False,
         }
         # Keep last 20 jobs
         if len(self.jobs) > 20:
@@ -180,38 +191,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result.bank_categories = parsed.bank_categories
         result.warnings = list(dict.fromkeys([*parsed.warnings, *result.warnings]))
 
-        job_id = jobs.put(result, account, filename)
-        export_filename = build_export_filename(account, result.rows)
-        preview_rows = result.rows[: settings.preview_row_limit]
-        total_rows = len(result.rows)
-        total_amount_uah = sum((r.amount for r in result.rows), Decimal("0"))
-
-        return templates.TemplateResponse(
-            request,
-            "preview.html",
-            {
-                "active_nav": "convert",
-                "job_id": job_id,
-                "filename": filename,
-                "export_filename": export_filename,
-                "account_name": account,
-                "rows": preview_rows,
-                "total_rows": total_rows,
-                "total_rows_display": _format_int_display(total_rows),
-                "total_amount_uah": total_amount_uah,
-                "total_amount_uah_display": _format_uah_display(total_amount_uah),
-                "preview_limit": settings.preview_row_limit,
-                "skipped": result.skipped,
-                "converted_fx_count": result.converted_fx_count,
-                "fx_failures": result.fx_failures,
-                "unmapped_categories": result.unmapped_categories,
-                "warnings": result.warnings[:30],
-                "warning_total": len(result.warnings),
-            },
+        stored = next((a for a in accounts if a.name == account), None)
+        job_id = jobs.put(
+            result,
+            account,
+            filename,
+            account_id=stored.id if stored else None,
         )
+        job = jobs.get(job_id)
+        assert job is not None
+        return _preview_page(request, templates, settings, job_id, job)
 
     @app.get("/download/{job_id}")
     def download(job_id: str) -> Response:
+        """Download all converted rows (backward-compatible; selection uses POST)."""
         job = jobs.get(job_id)
         if not job:
             return HTMLResponse(
@@ -220,21 +213,124 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=404,
             )
         result: ConversionResult = job["result"]
-        out_name = str(
-            job.get("export_filename")
-            or build_export_filename(str(job.get("account_name") or ""), result.rows)
-        )
-        ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", out_name).strip("._") or "bbi-export.csv"
-        if not ascii_name.lower().endswith(".csv"):
-            ascii_name += ".csv"
-        disposition = (
-            f'attachment; filename="{ascii_name}"; '
-            f"filename*=UTF-8''{quote(out_name)}"
-        )
-        return Response(
+        return _csv_download_response(
+            job,
+            result.rows,
             content=job["csv"],
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": disposition},
+        )
+
+    @app.post("/download/{job_id}")
+    def download_selected(
+        request: Request,
+        job_id: str,
+        row: Annotated[list[int], Form()] = [],
+    ) -> Response:
+        job = jobs.get(job_id)
+        if not job:
+            return HTMLResponse(
+                "<p>Завдання не знайдено або вже протерміноване. "
+                "<a href='/'>Завантажте файл знову</a>.</p>",
+                status_code=404,
+            )
+        result: ConversionResult = job["result"]
+        selected = _rows_by_indices(result.rows, row)
+        if not selected:
+            return _preview_page(
+                request,
+                templates,
+                settings,
+                job_id,
+                job,
+                error="Оберіть хоча б одну операцію для завантаження CSV.",
+                status_code=400,
+            )
+        return _csv_download_response(job, selected)
+
+    @app.post("/import/{job_id}", response_class=HTMLResponse)
+    def import_records(
+        request: Request,
+        job_id: str,
+        row: Annotated[list[int], Form()] = [],
+    ) -> HTMLResponse:
+        job = jobs.get(job_id)
+        if not job:
+            return HTMLResponse(
+                "<p>Завдання не знайдено або вже протерміноване. "
+                "<a href='/'>Завантажте файл знову</a>.</p>",
+                status_code=404,
+            )
+
+        result: ConversionResult = job["result"]
+        token = settings.budgetbakers_api_token.strip()
+        account_id = str(job.get("account_id") or "").strip()
+
+        def refuse(message: str, status_code: int = 400) -> HTMLResponse:
+            return _preview_page(
+                request,
+                templates,
+                settings,
+                job_id,
+                job,
+                error=message,
+                status_code=status_code,
+            )
+
+        if job.get("imported"):
+            return refuse("Це завдання вже імпортовано.")
+        if not result.rows:
+            return refuse("Немає рядків для імпорту.")
+        selected = _rows_by_indices(result.rows, row)
+        if not selected:
+            return refuse("Оберіть хоча б одну операцію для імпорту.")
+        if not token:
+            return refuse("Спочатку задайте BUDGETBAKERS_API_TOKEN.")
+        if not account_id:
+            return refuse("У рахунку немає ID BudgetBakers. Оновіть довідник з API.")
+
+        try:
+            with BudgetBakersRecordsClient(
+                base_url=settings.budgetbakers_api_base,
+                token=settings.budgetbakers_api_token,
+            ) as client:
+                import_result = client.import_rows(
+                    selected,
+                    account_id=account_id,
+                    category_cache=_load_bb_cache(settings),
+                )
+        except (RuntimeError, ValueError) as exc:
+            return refuse(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logging.exception("BudgetBakers import failed")
+            return refuse(f"Помилка імпорту: {exc}", status_code=500)
+
+        if import_result.succeeded:
+            job["imported"] = True
+
+        total = import_result.posted + import_result.not_sent
+        success = f"Імпортовано {import_result.succeeded} з {total}"
+        error = import_result.fatal_error
+        if import_result.aborted and not error:
+            error = "Імпорт перервано."
+
+        logging.info(
+            "Import job %s: succeeded=%s failed=%s skipped_zero=%s not_sent=%s aborted=%s",
+            job_id,
+            import_result.succeeded,
+            import_result.failed,
+            import_result.skipped_zero,
+            import_result.not_sent,
+            import_result.aborted,
+        )
+
+        return _preview_page(
+            request,
+            templates,
+            settings,
+            job_id,
+            job,
+            error=error,
+            success=success,
+            import_result=import_result,
         )
 
     @app.get("/settings/categories", response_class=HTMLResponse)
@@ -352,6 +448,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             success=f"Видалено «{name}».",
         )
 
+    @app.post("/settings/accounts/primary", response_class=HTMLResponse)
+    def accounts_primary(request: Request, name: str = Form("")) -> HTMLResponse:
+        accounts_store.set_primary(name)
+        return _accounts_page(request, templates, settings, accounts_store)
+
     return app
 
 
@@ -365,6 +466,9 @@ def _select_account(
     names = [a.name for a in accounts]
     if preferred and preferred in names:
         return preferred
+    for acc in accounts:
+        if acc.primary:
+            return acc.name
     if settings.default_account_name in names:
         return settings.default_account_name
     return names[0]
@@ -381,6 +485,132 @@ def _format_uah_display(amount: Decimal) -> str:
     whole, _, fraction = f"{absolute:.2f}".partition(".")
     grouped = f"{int(whole):,}".replace(",", " ")
     return f"{sign}{grouped}.{fraction} ₴"
+
+
+def _rows_by_indices(rows: list[ExportRow], indices: list[int]) -> list[ExportRow]:
+    """Return rows for valid, unique indices in the order they appear in the form."""
+    selected: list[ExportRow] = []
+    seen: set[int] = set()
+    n = len(rows)
+    for idx in indices:
+        if idx < 0 or idx >= n or idx in seen:
+            continue
+        seen.add(idx)
+        selected.append(rows[idx])
+    return selected
+
+
+def _csv_download_response(
+    job: dict[str, Any],
+    rows: list[ExportRow],
+    *,
+    content: bytes | None = None,
+) -> Response:
+    result: ConversionResult = job["result"]
+    out_name = str(
+        job.get("export_filename")
+        or build_export_filename(str(job.get("account_name") or ""), result.rows)
+    )
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", out_name).strip("._") or "bbi-export.csv"
+    if not ascii_name.lower().endswith(".csv"):
+        ascii_name += ".csv"
+    disposition = (
+        f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(out_name)}"
+    )
+    return Response(
+        content=content if content is not None else build_csv(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": disposition},
+    )
+
+
+def _import_ui_state(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    result: ConversionResult = job["result"]
+    token_configured = bool(settings.budgetbakers_api_token.strip())
+    account_id = str(job.get("account_id") or "").strip()
+    already_imported = bool(job.get("imported"))
+    reason: str | None = None
+    if already_imported:
+        reason = "Це завдання вже імпортовано."
+    elif not result.rows:
+        reason = "Немає рядків для імпорту."
+    elif not token_configured:
+        reason = "Спочатку задайте BUDGETBAKERS_API_TOKEN."
+    elif not account_id:
+        reason = "У рахунку немає ID BudgetBakers. Оновіть довідник з API."
+    return {
+        "token_configured": token_configured,
+        "can_import": reason is None,
+        "import_disabled_reason": reason,
+        "already_imported": already_imported,
+    }
+
+
+def _preview_page(
+    request: Request,
+    templates: Jinja2Templates,
+    settings: Settings,
+    job_id: str,
+    job: dict[str, Any],
+    *,
+    error: str | None = None,
+    success: str | None = None,
+    status_code: int = 200,
+    import_result: RecordImportResult | None = None,
+) -> HTMLResponse:
+    result: ConversionResult = job["result"]
+    account_name = str(job.get("account_name") or "")
+    filename = str(job.get("filename") or "")
+    export_filename = str(
+        job.get("export_filename") or build_export_filename(account_name, result.rows)
+    )
+    total_rows = len(result.rows)
+    total_amount_uah = sum((r.amount for r in result.rows), Decimal("0"))
+    import_errors = []
+    import_error_total = 0
+    if import_result is not None:
+        import_error_total = len(import_result.errors)
+        import_errors = import_result.errors[:IMPORT_ERROR_CAP]
+
+    context: dict[str, Any] = {
+        "active_nav": "convert",
+        "job_id": job_id,
+        "filename": filename,
+        "export_filename": export_filename,
+        "account_name": account_name,
+        "rows": result.rows,
+        "total_rows": total_rows,
+        "total_rows_display": _format_int_display(total_rows),
+        "total_amount_uah": total_amount_uah,
+        "total_amount_uah_display": _format_uah_display(total_amount_uah),
+        "preview_limit": settings.preview_row_limit,
+        "skipped": result.skipped,
+        "converted_fx_count": result.converted_fx_count,
+        "fx_failures": result.fx_failures,
+        "unmapped_categories": result.unmapped_categories,
+        "warnings": result.warnings[:30],
+        "warning_total": len(result.warnings),
+        "error": error,
+        "success": success,
+        "import_result": import_result,
+        "import_errors": import_errors,
+        "import_error_total": import_error_total,
+        "import_succeeded": import_result.succeeded if import_result else None,
+        "import_failed": import_result.failed if import_result else None,
+        "import_skipped_zero": import_result.skipped_zero if import_result else None,
+        "import_not_sent": import_result.not_sent if import_result else None,
+        "import_fatal_error": import_result.fatal_error if import_result else None,
+        "import_aborted": import_result.aborted if import_result else False,
+        "import_posted": import_result.posted if import_result else None,
+    }
+    context.update(_import_ui_state(job, settings))
+    return templates.TemplateResponse(
+        request,
+        "preview.html",
+        context,
+        status_code=status_code,
+    )
 
 
 def _index_page(

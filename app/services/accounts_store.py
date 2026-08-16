@@ -14,6 +14,7 @@ class StoredAccount:
     name: str
     id: str | None = None
     source: str = "manual"  # "api" | "manual"
+    primary: bool = False
 
 
 class AccountsStore:
@@ -50,6 +51,7 @@ class AccountsStore:
                     name=existing.name if existing else clean,
                     id=account_id or (existing.id if existing else None),
                     source="api",
+                    primary=existing.primary if existing else False,
                 )
 
             # Keep manual entries not returned by API
@@ -68,7 +70,7 @@ class AccountsStore:
             for acc in current:
                 if acc.name.casefold() == key:
                     return current
-            current.append(StoredAccount(name=clean, id=None, source="manual"))
+            current.append(StoredAccount(name=clean, id=None, source="manual", primary=False))
             current.sort(key=lambda a: a.name.casefold())
             self._write_unlocked(current)
             return current
@@ -87,6 +89,29 @@ class AccountsStore:
             self._write_unlocked(kept)
             return kept
 
+    def set_primary(self, name: str) -> list[StoredAccount]:
+        """Mark ``name`` as the exclusive primary account, or unset if already primary."""
+        target = str(name).strip()
+        if not target:
+            return self.list()
+        with self._lock:
+            current = self._read_unlocked()
+            key = target.casefold()
+            if not any(a.name.casefold() == key for a in current):
+                return current
+            currently_primary = any(a.name.casefold() == key and a.primary for a in current)
+            updated = [
+                StoredAccount(
+                    name=a.name,
+                    id=a.id,
+                    source=a.source,
+                    primary=(a.name.casefold() == key) and not currently_primary,
+                )
+                for a in current
+            ]
+            self._write_unlocked(updated)
+            return updated
+
     def _read_unlocked(self) -> list[StoredAccount]:
         if not self.path.exists():
             return []
@@ -104,11 +129,13 @@ class AccountsStore:
                 name = item.strip()
                 account_id = None
                 source = "manual"
+                primary = False
             elif isinstance(item, dict):
                 name = str(item.get("name") or "").strip()
                 account_id = item.get("id")
                 account_id = str(account_id) if account_id else None
                 source = str(item.get("source") or ("api" if account_id else "manual"))
+                primary = bool(item.get("primary"))
             else:
                 continue
             if not name:
@@ -117,7 +144,9 @@ class AccountsStore:
             if key in seen:
                 continue
             seen.add(key)
-            result.append(StoredAccount(name=name, id=account_id, source=source))
+            result.append(
+                StoredAccount(name=name, id=account_id, source=source, primary=primary)
+            )
         result.sort(key=lambda a: a.name.casefold())
         return result
 
@@ -127,6 +156,7 @@ class AccountsStore:
                 "name": a.name,
                 **({"id": a.id} if a.id else {}),
                 "source": a.source,
+                **({"primary": True} if a.primary else {}),
             }
             for a in accounts
         ]

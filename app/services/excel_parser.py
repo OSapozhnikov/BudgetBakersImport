@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.services.counterparty import extract_counterparty
+
 # Some bank exports use Latin "C" instead of Cyrillic "С" in "Статус" / "Cтатус".
 COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "status": ("статус", "cтатус"),
@@ -43,6 +45,7 @@ class ParsedRow:
     currency: str
     status: str
     source_row: int
+    counter_party: str = ""
 
 
 @dataclass
@@ -198,6 +201,7 @@ def parse_excel(content: bytes) -> ParseResult:
                 currency=currency,
                 status=status_s,
                 source_row=source_row,
+                counter_party=extract_counterparty(note_s),
             )
         )
 

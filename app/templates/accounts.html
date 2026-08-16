@@ -47,6 +47,7 @@
           <th>Назва</th>
           <th>Джерело</th>
           <th>ID</th>
+          <th>Основний</th>
           <th></th>
         </tr>
       </thead>
@@ -56,6 +57,18 @@
           <td>{{ acc.name }}</td>
           <td>{% if acc.source == "api" %}API{% else %}вручну{% endif %}</td>
           <td class="muted">{{ acc.id or "—" }}</td>
+          <td>
+            <form action="/settings/accounts/primary" method="post" class="inline">
+              <input type="hidden" name="name" value="{{ acc.name }}">
+              <input
+                type="checkbox"
+                {% if acc.primary %}checked{% endif %}
+                title="Основний"
+                aria-label="Основний рахунок {{ acc.name }}"
+                onchange="this.form.submit()"
+              >
+            </form>
+          </td>
           <td>
             <form action="/settings/accounts/delete" method="post" class="inline">
               <input type="hidden" name="name" value="{{ acc.name }}">

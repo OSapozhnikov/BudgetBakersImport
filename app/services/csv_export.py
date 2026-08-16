@@ -41,6 +41,7 @@ class ExportRow:
     fx_converted: bool
     fx_warning: str | None = None
     unmapped: bool = False
+    counter_party: str = ""
 
 
 @dataclass
@@ -94,6 +95,7 @@ def convert_rows(
                 fx_converted=fx_conv.converted,
                 fx_warning=fx_conv.warning,
                 unmapped=not was_mapped and bool(parsed.bank_category),
+                counter_party=parsed.counter_party or "",
             )
         )
 

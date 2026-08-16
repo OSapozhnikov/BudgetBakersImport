@@ -279,6 +279,20 @@ form.inline { display: inline; margin: 0; }
   margin: 1rem 0;
 }
 
+.actions form { margin: 0; }
+
+.import-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.import-cta .hint {
+  margin: 0;
+  max-width: 18rem;
+}
+
 .hints {
   margin-top: 1.75rem;
   color: var(--muted);
@@ -328,6 +342,11 @@ form.inline { display: inline; margin: 0; }
 .alert-error { background: var(--error-bg); color: var(--error); border-color: #f2c4c0; }
 .alert-ok { background: var(--ok-bg); color: var(--ok); border-color: #abe0c4; }
 .alert-warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-border); }
+
+.alert ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+}
 
 .stats {
   display: grid;
@@ -399,6 +418,23 @@ th, td {
   vertical-align: middle;
 }
 
+th.col-check,
+td.col-check {
+  width: 2.5rem;
+  padding-left: 0.85rem;
+  padding-right: 0.5rem;
+  text-align: center;
+}
+
+.col-check input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+  vertical-align: middle;
+}
+
 th {
   background: #F3F4F6;
   position: sticky;
@@ -425,7 +461,20 @@ tr:last-child td { border-bottom: 0; }
 
 th.num { text-align: right; }
 
-.note { max-width: 28rem; word-break: break-word; }
+.note {
+  max-width: 28rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.counterparty {
+  max-width: 14rem;
+  width: 12rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 .tag {
   display: inline-block;
