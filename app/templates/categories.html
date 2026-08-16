@@ -1,37 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Категорії — BudgetBakers Import{% endblock %}
+{% block title %}{{ t("categories.title") }}{% endblock %}
 {% block content %}
 <section class="hero-block enter">
-  <p class="eyebrow">Налаштування</p>
-  <h1>Мапінг категорій</h1>
+  <p class="eyebrow">{{ t("categories.eyebrow") }}</p>
+  <h1>{{ t("categories.h1") }}</h1>
   <p class="lead">
-    Банківські категорії з останніх завантажень зіставляються з назвами категорій BudgetBakers.
-    У списку групи = батьківські категорії у Wallet (наприклад Food &amp; Drinks → Groceries).
-    Мапінг зберігає лише назву категорії (лист) у <code>category_mappings.json</code> —
-    так очікує CSV BudgetBakers.
-    Якщо довідник порожній або для категорії немає відповідника —
-    у CSV потрапляє назва з файлу імпорту як є.
+    {{ t("categories.lead", file="<code>category_mappings.json</code>") | safe }}
   </p>
 </section>
 
 <div class="actions enter">
   <form action="/settings/categories/refresh" method="post">
-    <button type="submit" class="btn primary" {% if not token_configured %}title="Спочатку задайте BUDGETBAKERS_API_TOKEN"{% endif %}>
-      Оновити з BudgetBakers API
+    <button type="submit" class="btn primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
+      {{ t("categories.refresh") }}
     </button>
   </form>
-  <a class="btn" href="/">← До конвертації</a>
+  <a class="btn" href="/">{{ t("categories.back") }}</a>
 </div>
 
 {% if not token_configured %}
 <div class="alert alert-warn enter">
-  Токен API не задано (<code>BUDGETBAKERS_API_TOKEN</code>). Можна вводити назви категорій вручну в полі нижче.
+  {{ t("categories.no_token", code="<code>BUDGETBAKERS_API_TOKEN</code>") | safe }}
 </div>
 {% endif %}
 
 {% if not bank_categories %}
 <div class="alert enter">
-  Ще немає банківських категорій. Спочатку <a href="/">завантажте Excel</a> — список з’явиться тут.
+  {{ t("categories.empty").replace("{link}", '<a href="/">').replace("{/link}", "</a>") | safe }}
 </div>
 {% else %}
 <form action="/settings/categories/save" method="post" class="panel enter">
@@ -39,8 +34,8 @@
     <table>
       <thead>
         <tr>
-          <th>Категорія з виписки</th>
-          <th>Категорія BudgetBakers</th>
+          <th>{{ t("categories.col_bank") }}</th>
+          <th>{{ t("categories.col_bb") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +46,7 @@
             <input type="hidden" name="bank_{{ loop.index0 }}" value="{{ bank }}">
             {% if bb_groups %}
             <select name="map_{{ loop.index0 }}" class="category-select">
-              <option value="">— залишити як у файлі імпорту —</option>
+              <option value="">{{ t("categories.keep_file") }}</option>
               {% for group in bb_groups %}
               <optgroup label="{{ group.group_name }}">
                 {% for cat in group['items'] %}
@@ -63,10 +58,10 @@
               {% endfor %}
             </select>
             {% if mappings.get(bank) and mappings.get(bank) not in bb_names %}
-            <div class="muted">Поточне: {{ mappings.get(bank) }}</div>
+            <div class="muted">{{ t("categories.current", name=mappings.get(bank)) }}</div>
             {% endif %}
             {% else %}
-            <input type="text" name="map_{{ loop.index0 }}" value="{{ mappings.get(bank, '') }}" placeholder="Порожньо = як у файлі імпорту">
+            <input type="text" name="map_{{ loop.index0 }}" value="{{ mappings.get(bank, '') }}" placeholder="{{ t('categories.placeholder') }}">
             {% endif %}
           </td>
         </tr>
@@ -74,7 +69,7 @@
       </tbody>
     </table>
   </div>
-  <button type="submit" class="btn primary">Зберегти мапінг</button>
+  <button type="submit" class="btn primary">{{ t("categories.save") }}</button>
 </form>
 {% endif %}
 {% endblock %}

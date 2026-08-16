@@ -1,54 +1,50 @@
 {% extends "base.html" %}
-{% block title %}Конвертація — BudgetBakers Import{% endblock %}
+{% block title %}{{ t("index.title") }}{% endblock %}
 {% block content %}
 <section class="hero-block enter">
-  <p class="eyebrow">Конвертація</p>
-  <h1>Excel → CSV</h1>
-  <p class="lead">
-    Завантажте банківську Excel-виписку (.xlsx). Суми в USD/EUR конвертуються в UAH за курсом НБУ
-    на дату операції. Усі рядки потрапляють на один рахунок з довідника.
-  </p>
+  <p class="eyebrow">{{ t("index.eyebrow") }}</p>
+  <h1>{{ t("index.h1") }}</h1>
+  <p class="lead">{{ t("index.lead") }}</p>
 </section>
 
 {% if not accounts %}
 <div class="alert alert-warn enter">
-  Довідник рахунків порожній.
-  Спочатку <a href="/settings/accounts">додайте або завантажте рахунки</a>.
+  {{ t("index.empty_accounts").replace("{link}", '<a href="/settings/accounts">').replace("{/link}", "</a>") | safe }}
 </div>
 {% endif %}
 
 <form class="panel enter" action="/convert" method="post" enctype="multipart/form-data">
   <label class="field">
-    <span>Файл Excel</span>
+    <span>{{ t("index.file_label") }}</span>
     <input type="file" name="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required {% if not accounts %}disabled{% endif %}>
   </label>
 
   <label class="field">
-    <span>Рахунок BudgetBakers</span>
+    <span>{{ t("index.account_label") }}</span>
     {% if accounts %}
     <select name="account_name" required>
       {% for acc in accounts %}
       <option value="{{ acc.name }}" {% if selected_account == acc.name %}selected{% endif %}>{{ acc.name }}</option>
       {% endfor %}
     </select>
-    <small>Список з <a href="/settings/accounts">довідника рахунків</a>. Однакова назва для всіх рядків.</small>
+    <small>{{ t("index.account_hint").replace("{link}", '<a href="/settings/accounts">').replace("{/link}", "</a>") | safe }}</small>
     {% else %}
     <select name="account_name" disabled>
-      <option value="">— немає рахунків —</option>
+      <option value="">{{ t("index.no_accounts_option") }}</option>
     </select>
     {% endif %}
   </label>
 
-  <button type="submit" class="btn primary block" {% if not accounts %}disabled{% endif %}>Конвертувати та переглянути</button>
+  <button type="submit" class="btn primary block" {% if not accounts %}disabled{% endif %}>{{ t("index.submit") }}</button>
 </form>
 
 <aside class="hints enter">
-  <h2>Що робить додаток</h2>
+  <h2>{{ t("index.hints_title") }}</h2>
   <ul>
-    <li>Бере лише рядки зі статусом «Виконано»</li>
-    <li>Мапить ₴ / грн → UAH; інші валюти — через НБУ</li>
-    <li>Підставляє категорії з <a href="/settings/categories">мапінгу</a>; якщо мапінгу немає — залишає категорію з файлу імпорту</li>
-    <li>Віддає CSV з BOM, роздільник <code>,</code></li>
+    <li>{{ t("index.hint_status") }}</li>
+    <li>{{ t("index.hint_fx") }}</li>
+    <li>{{ t("index.hint_mapping").replace("{link}", '<a href="/settings/categories">').replace("{/link}", "</a>") | safe }}</li>
+    <li>{{ t("index.hint_csv").replace("{code}", "<code>,</code>") | safe }}</li>
   </ul>
 </aside>
 {% endblock %}

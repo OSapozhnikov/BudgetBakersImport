@@ -1,42 +1,40 @@
 {% extends "base.html" %}
-{% block title %}Рахунки — BudgetBakers Import{% endblock %}
+{% block title %}{{ t("accounts.title") }}{% endblock %}
 {% block content %}
 <section class="hero-block enter">
-  <p class="eyebrow">Налаштування</p>
-  <h1>Довідник рахунків</h1>
+  <p class="eyebrow">{{ t("accounts.eyebrow") }}</p>
+  <h1>{{ t("accounts.h1") }}</h1>
   <p class="lead">
-    Рахунки BudgetBakers для колонки <code>Рахунок/картка</code> у CSV.
-    Можна підтягнути через API або додати назву вручну. Зберігається в
-    <code>accounts.json</code>.
+    {{ t("accounts.lead", code="<code>Рахунок/картка</code>", file="<code>accounts.json</code>") | safe }}
   </p>
 </section>
 
 <div class="actions enter">
   <form action="/settings/accounts/refresh" method="post">
-    <button type="submit" class="btn primary" {% if not token_configured %}title="Спочатку задайте BUDGETBAKERS_API_TOKEN"{% endif %}>
-      Оновити з BudgetBakers API
+    <button type="submit" class="btn primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
+      {{ t("accounts.refresh") }}
     </button>
   </form>
-  <a class="btn" href="/">← До конвертації</a>
+  <a class="btn" href="/">{{ t("accounts.back") }}</a>
 </div>
 
 {% if not token_configured %}
 <div class="alert alert-warn enter">
-  Токен API не задано (<code>BUDGETBAKERS_API_TOKEN</code>). Можна додати назви рахунків вручну нижче.
+  {{ t("accounts.no_token", code="<code>BUDGETBAKERS_API_TOKEN</code>") | safe }}
 </div>
 {% endif %}
 
 <form action="/settings/accounts/add" method="post" class="panel inline-form enter">
   <label class="field grow">
-    <span>Додати рахунок вручну</span>
+    <span>{{ t("accounts.add_label") }}</span>
     <input type="text" name="name" maxlength="80" placeholder="{{ default_account }}" required>
   </label>
-  <button type="submit" class="btn primary">Додати</button>
+  <button type="submit" class="btn primary">{{ t("accounts.add") }}</button>
 </form>
 
 {% if not accounts %}
 <div class="alert enter">
-  Довідник порожній. Оновіть з API або додайте рахунок вручну — інакше конвертація недоступна.
+  {{ t("accounts.empty") }}
 </div>
 {% else %}
 <div class="panel enter">
@@ -44,10 +42,10 @@
     <table>
       <thead>
         <tr>
-          <th>Назва</th>
-          <th>Джерело</th>
-          <th>ID</th>
-          <th>Основний</th>
+          <th>{{ t("accounts.col_name") }}</th>
+          <th>{{ t("accounts.col_source") }}</th>
+          <th>{{ t("accounts.col_id") }}</th>
+          <th>{{ t("accounts.col_primary") }}</th>
           <th></th>
         </tr>
       </thead>
@@ -55,7 +53,7 @@
         {% for acc in accounts %}
         <tr>
           <td>{{ acc.name }}</td>
-          <td>{% if acc.source == "api" %}API{% else %}вручну{% endif %}</td>
+          <td>{% if acc.source == "api" %}{{ t("accounts.source_api") }}{% else %}{{ t("accounts.source_manual") }}{% endif %}</td>
           <td class="muted">{{ acc.id or "—" }}</td>
           <td>
             <form action="/settings/accounts/primary" method="post" class="inline">
@@ -63,8 +61,8 @@
               <input
                 type="checkbox"
                 {% if acc.primary %}checked{% endif %}
-                title="Основний"
-                aria-label="Основний рахунок {{ acc.name }}"
+                title="{{ t('accounts.primary_title') }}"
+                aria-label="{{ t('accounts.primary_aria', name=acc.name) }}"
                 onchange="this.form.submit()"
               >
             </form>
@@ -72,7 +70,7 @@
           <td>
             <form action="/settings/accounts/delete" method="post" class="inline">
               <input type="hidden" name="name" value="{{ acc.name }}">
-              <button type="submit" class="btn danger small">Видалити</button>
+              <button type="submit" class="btn danger small">{{ t("accounts.delete") }}</button>
             </form>
           </td>
         </tr>

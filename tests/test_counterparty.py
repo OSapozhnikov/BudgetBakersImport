@@ -119,6 +119,21 @@ class ExtractCounterpartyTests(unittest.TestCase):
         note = rf"Оплата товарів\послуг\{long_name} KYIV UKR : Google Pay ****8801."
         self.assertEqual(len(extract_counterparty(note)), 255)
 
+    def test_whitespace_and_nbsp_only(self) -> None:
+        self.assertEqual(extract_counterparty("   "), "")
+        self.assertEqual(extract_counterparty("\xa0\xa0"), "")
+
+    def test_samsung_pay_tail(self) -> None:
+        note = r"Оплата товарів\послуг\ATB MARKET KYIV UKR : Samsung Pay ****1234."
+        self.assertEqual(extract_counterparty(note), "ATB MARKET")
+
+    def test_new_york_trailing_city(self) -> None:
+        note = (
+            r"Оплата товарів\послуг - інтернет\ACME Corp New York USA "
+            r": Google Pay ****8801."
+        )
+        self.assertEqual(extract_counterparty(note), "ACME Corp")
+
 
 if __name__ == "__main__":
     unittest.main()

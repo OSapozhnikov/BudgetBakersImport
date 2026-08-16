@@ -1,30 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Перегляд — BudgetBakers Import{% endblock %}
+{% block title %}{{ t("preview.title") }}{% endblock %}
 {% block content %}
 <section class="hero-block enter">
-  <p class="eyebrow">Конвертація</p>
-  <h1>Попередній перегляд конвертації</h1>
-  <p class="lead">
-    Зніміть позначку з рядків, які не потрібно включати в CSV або імпорт у BudgetBakers.
-  </p>
+  <p class="eyebrow">{{ t("preview.eyebrow") }}</p>
+  <h1>{{ t("preview.h1") }}</h1>
+  <p class="lead">{{ t("preview.lead") }}</p>
 </section>
 
 <div class="stats enter">
   <div class="stat">
     <span class="n">{{ total_rows_display }}</span>
-    <span class="l">Рядків після фільтрації</span>
+    <span class="l">{{ t("preview.stat_rows") }}</span>
   </div>
   <div class="stat">
     <span class="n">{{ total_amount_uah_display }}</span>
-    <span class="l">Сума UAH</span>
+    <span class="l">{{ t("preview.stat_sum") }}</span>
   </div>
   <div class="stat">
     <span class="n text">{{ account_name }}</span>
-    <span class="l">Рахунок</span>
+    <span class="l">{{ t("preview.stat_account") }}</span>
   </div>
   <div class="stat">
     <span class="n text">{{ filename }}</span>
-    <span class="l">Файл</span>
+    <span class="l">{{ t("preview.stat_file") }}</span>
   </div>
 </div>
 
@@ -35,41 +33,38 @@
               class="btn primary"
               formaction="/import/{{ job_id }}"
               {% if not can_import %}disabled title="{{ import_disabled_reason }}"{% endif %}>
-        Імпортувати
+        {{ t("preview.import") }}
       </button>
       {% if import_disabled_reason %}
       <p class="muted hint">{{ import_disabled_reason }}</p>
       {% endif %}
     </div>
     <button type="submit" class="btn" formaction="/download/{{ job_id }}">
-      Завантажити CSV
+      {{ t("preview.download_csv") }}
     </button>
-    <a class="btn" href="/">← Назад до завантаження</a>
+    <a class="btn" href="/">{{ t("preview.back") }}</a>
   </div>
-  <p class="muted enter">Файл експорту: <code class="export-name">{{ export_filename }}</code></p>
+  <p class="muted enter">{{ t("preview.export_file") }} <code class="export-name">{{ export_filename }}</code></p>
 
   {% if import_result %}
   <p class="muted enter">
-    Успішно: {{ import_result.succeeded }}
-    · помилок: {{ import_result.failed }}
-    · пропущено (сума 0): {{ import_result.skipped_zero }}
-    · не надіслано: {{ import_result.not_sent }}
-    {% if import_result.aborted %} · імпорт перервано{% endif %}
+    {{ t("preview.import_stats", succeeded=import_result.succeeded, failed=import_result.failed, skipped_zero=import_result.skipped_zero, not_sent=import_result.not_sent) }}
+    {% if import_result.aborted %}{{ t("preview.import_aborted_suffix") }}{% endif %}
   </p>
   {% if import_errors %}
   <div class="alert alert-warn enter">
-    Помилки записів:
+    {{ t("preview.record_errors") }}
     <ul>
       {% for e in import_errors %}
       <li>
-        Рядок {{ e.row_index + 1 }}
+        {{ t("preview.row_n", n=e.row_index + 1) }}
         {% if e.date %} · {{ e.date }}{% endif %}
         {% if e.note %} · {{ e.note[:80] }}{% endif %}
         — {{ e.error }}
       </li>
       {% endfor %}
       {% if import_error_total > import_errors|length %}
-      <li>…і ще {{ import_error_total - import_errors|length }}</li>
+      <li>{{ t("preview.and_more", n=import_error_total - import_errors|length) }}</li>
       {% endif %}
     </ul>
   </div>
@@ -78,20 +73,20 @@
 
   {% if unmapped_categories %}
   <div class="alert alert-warn enter">
-    Категорії без мапінгу (залишено оригінальні назви):
+    {{ t("preview.unmapped") }}
     {{ unmapped_categories | join(", ") }}
   </div>
   {% endif %}
 
   {% if warnings %}
   <details class="warnings enter">
-    <summary>Попередження ({{ warning_total }})</summary>
+    <summary>{{ t("preview.warnings", n=warning_total) }}</summary>
     <ul>
       {% for w in warnings %}
       <li>{{ w }}</li>
       {% endfor %}
       {% if warning_total > warnings|length %}
-      <li>…і ще {{ warning_total - warnings|length }}</li>
+      <li>{{ t("preview.and_more", n=warning_total - warnings|length) }}</li>
       {% endif %}
     </ul>
   </details>
@@ -99,11 +94,11 @@
 
   {% if fx_failures or converted_fx_count or skipped %}
   <p class="muted enter">
-    Пропущено: {{ skipped }} · FX-конверсій: {{ converted_fx_count }} · помилок курсу: {{ fx_failures }}
+    {{ t("preview.meta_line", skipped=skipped, fx=converted_fx_count, fx_failures=fx_failures) }}
   </p>
   {% endif %}
 
-  <p class="muted enter">Усього рядків: {{ total_rows }}.</p>
+  <p class="muted enter">{{ t("preview.total_rows", n=total_rows) }}</p>
 
   <div class="table-wrap enter">
     <table>
@@ -111,17 +106,17 @@
         <tr>
           <th class="col-check">
             <input type="checkbox" id="select-all" checked
-                   title="Вибрати всі / зняти всі"
-                   aria-label="Вибрати всі або зняти всі">
+                   title="{{ t('preview.select_all_title') }}"
+                   aria-label="{{ t('preview.select_all_aria') }}">
           </th>
-          <th>Дата</th>
-          <th class="counterparty">Контрагент</th>
-          <th class="note">Опис</th>
-          <th>Категорія</th>
-          <th class="num">Сума (UAH)</th>
-          <th>Валюта</th>
-          <th class="num">Сума (ориг.)</th>
-          <th>Рахунок</th>
+          <th>{{ t("preview.col_date") }}</th>
+          <th class="counterparty">{{ t("preview.col_counterparty") }}</th>
+          <th class="note">{{ t("preview.col_note") }}</th>
+          <th>{{ t("preview.col_category") }}</th>
+          <th class="num">{{ t("preview.col_amount_uah") }}</th>
+          <th>{{ t("preview.col_currency") }}</th>
+          <th class="num">{{ t("preview.col_amount_orig") }}</th>
+          <th>{{ t("preview.col_account") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -129,14 +124,14 @@
         <tr class="{% if r.unmapped %}row-warn{% endif %} {% if r.fx_warning %}row-fx{% endif %}">
           <td class="col-check">
             <input type="checkbox" name="row" value="{{ loop.index0 }}" checked
-                   aria-label="Включити рядок {{ loop.index }}">
+                   aria-label="{{ t('preview.include_row_aria', n=loop.index) }}">
           </td>
           <td class="num">{{ r.date.strftime('%d.%m.%Y') }}</td>
           <td class="counterparty">{{ r.counter_party }}</td>
           <td class="note">{{ r.note }}</td>
           <td>
             {{ r.category }}
-            {% if r.unmapped %}<span class="tag">без мапінгу</span>{% endif %}
+            {% if r.unmapped %}<span class="tag">{{ t("preview.tag_unmapped") }}</span>{% endif %}
           </td>
           <td class="num">{{ '%.2f'|format(r.amount|float) }}</td>
           <td>₴</td>
@@ -153,6 +148,11 @@
 (function () {
   var form = document.getElementById("selection-form");
   if (!form) return;
+
+  var i18n = {
+    pickOne: {{ t("preview.js_pick_one") | tojson }},
+    confirmImport: {{ t("preview.js_confirm_import") | tojson }}
+  };
 
   var selectAll = document.getElementById("select-all");
   var rowBoxes = function () {
@@ -189,12 +189,13 @@
     var count = selectedCount();
     if (count === 0) {
       e.preventDefault();
-      alert("Оберіть хоча б одну операцію.");
+      alert(i18n.pickOne);
       return;
     }
     var action = (e.submitter && e.submitter.getAttribute("formaction")) || form.action || "";
     if (action.indexOf("/import/") !== -1) {
-      if (!confirm("Імпортувати " + count + " операцій у BudgetBakers?")) {
+      var msg = i18n.confirmImport.replace("{count}", String(count));
+      if (!confirm(msg)) {
         e.preventDefault();
       }
     }

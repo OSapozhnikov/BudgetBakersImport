@@ -13,10 +13,19 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.i18n import (
+    get_lang,
+    normalize_lang,
+    render_job_not_found,
+    safe_redirect_url,
+    set_lang_cookie,
+    t_for,
+    translate,
+)
 from app.services.accounts import BudgetBakersAccountsClient
 from app.services.accounts_store import AccountsStore, StoredAccount
 from app.services.categories import (
@@ -106,6 +115,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/lang/{code}")
+    def set_language(code: str, request: Request) -> RedirectResponse:
+        lang = normalize_lang(code)
+        response = RedirectResponse(
+            url=safe_redirect_url(request, "/"),
+            status_code=303,
+        )
+        set_lang_cookie(response, lang)
+        return response
+
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
         return _index_page(request, templates, settings, accounts_store)
@@ -116,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         file: UploadFile = File(...),
         account_name: str = Form(""),
     ) -> HTMLResponse:
+        t = t_for(request)
         accounts = accounts_store.list()
         account = (account_name or "").strip()
         if not accounts:
@@ -124,7 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
-                error="Спочатку додайте рахунок у довідник (Рахунки).",
+                error=t("err.add_account_first"),
                 status_code=400,
             )
         allowed = {a.name for a in accounts}
@@ -134,7 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
-                error="Оберіть рахунок зі списку довідника.",
+                error=t("err.pick_account"),
                 status_code=400,
                 selected_account=account,
             )
@@ -146,7 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
-                error="Потрібен файл Excel (.xlsx).",
+                error=t("err.need_xlsx"),
                 status_code=400,
                 selected_account=account,
             )
@@ -158,7 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
-                error="Файл порожній.",
+                error=t("err.empty_file"),
                 status_code=400,
                 selected_account=account,
             )
@@ -172,7 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
-                error=f"Помилка читання Excel: {exc}",
+                error=t("err.excel_read", exc=exc),
                 status_code=400,
                 selected_account=account,
             )
@@ -203,13 +223,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _preview_page(request, templates, settings, job_id, job)
 
     @app.get("/download/{job_id}")
-    def download(job_id: str) -> Response:
+    def download(request: Request, job_id: str) -> Response:
         """Download all converted rows (backward-compatible; selection uses POST)."""
         job = jobs.get(job_id)
         if not job:
             return HTMLResponse(
-                "<p>Завдання не знайдено або вже протерміноване. "
-                "<a href='/'>Завантажте файл знову</a>.</p>",
+                render_job_not_found(request),
                 status_code=404,
             )
         result: ConversionResult = job["result"]
@@ -225,11 +244,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job_id: str,
         row: Annotated[list[int], Form()] = [],
     ) -> Response:
+        t = t_for(request)
         job = jobs.get(job_id)
         if not job:
             return HTMLResponse(
-                "<p>Завдання не знайдено або вже протерміноване. "
-                "<a href='/'>Завантажте файл знову</a>.</p>",
+                render_job_not_found(request),
                 status_code=404,
             )
         result: ConversionResult = job["result"]
@@ -241,7 +260,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 settings,
                 job_id,
                 job,
-                error="Оберіть хоча б одну операцію для завантаження CSV.",
+                error=t("err.pick_rows_csv"),
                 status_code=400,
             )
         return _csv_download_response(job, selected)
@@ -252,11 +271,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job_id: str,
         row: Annotated[list[int], Form()] = [],
     ) -> HTMLResponse:
+        t = t_for(request)
         job = jobs.get(job_id)
         if not job:
             return HTMLResponse(
-                "<p>Завдання не знайдено або вже протерміноване. "
-                "<a href='/'>Завантажте файл знову</a>.</p>",
+                render_job_not_found(request),
                 status_code=404,
             )
 
@@ -276,16 +295,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         if job.get("imported"):
-            return refuse("Це завдання вже імпортовано.")
+            return refuse(t("err.already_imported"))
         if not result.rows:
-            return refuse("Немає рядків для імпорту.")
+            return refuse(t("err.no_rows_import"))
         selected = _rows_by_indices(result.rows, row)
         if not selected:
-            return refuse("Оберіть хоча б одну операцію для імпорту.")
+            return refuse(t("err.pick_rows_import"))
         if not token:
-            return refuse("Спочатку задайте BUDGETBAKERS_API_TOKEN.")
+            return refuse(t("err.need_token"))
         if not account_id:
-            return refuse("У рахунку немає ID BudgetBakers. Оновіть довідник з API.")
+            return refuse(t("err.need_account_id"))
 
         try:
             with BudgetBakersRecordsClient(
@@ -301,16 +320,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return refuse(str(exc))
         except Exception as exc:  # noqa: BLE001
             logging.exception("BudgetBakers import failed")
-            return refuse(f"Помилка імпорту: {exc}", status_code=500)
+            return refuse(t("err.import_failed", exc=exc), status_code=500)
 
         if import_result.succeeded:
             job["imported"] = True
 
         total = import_result.posted + import_result.not_sent
-        success = f"Імпортовано {import_result.succeeded} з {total}"
+        success = t("ok.imported", succeeded=import_result.succeeded, total=total)
         error = import_result.fatal_error
         if import_result.aborted and not error:
-            error = "Імпорт перервано."
+            error = t("err.import_aborted")
 
         logging.info(
             "Import job %s: succeeded=%s failed=%s skipped_zero=%s not_sent=%s aborted=%s",
@@ -339,6 +358,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/settings/categories/refresh", response_class=HTMLResponse)
     def categories_refresh(request: Request) -> HTMLResponse:
+        t = t_for(request)
         error = None
         bb_categories: list[Any] = []
         try:
@@ -367,11 +387,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings,
             store,
             error=error,
-            success=None if error else f"Завантажено {len(bb_categories)} категорій BudgetBakers.",
+            success=None if error else t("ok.categories_loaded", n=len(bb_categories)),
         )
 
     @app.post("/settings/categories/save", response_class=HTMLResponse)
     async def categories_save(request: Request) -> HTMLResponse:
+        t = t_for(request)
         form = await request.form()
         updates: dict[str, str] = {}
         for key, value in form.multi_items():
@@ -387,7 +408,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             templates,
             settings,
             store,
-            success="Мапінг збережено.",
+            success=t("ok.mapping_saved"),
         )
 
     @app.get("/settings/accounts", response_class=HTMLResponse)
@@ -396,6 +417,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/settings/accounts/refresh", response_class=HTMLResponse)
     def accounts_refresh(request: Request) -> HTMLResponse:
+        t = t_for(request)
         error = None
         count = 0
         try:
@@ -416,18 +438,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings,
             accounts_store,
             error=error,
-            success=None if error else f"Оновлено з API: {count} рахунків (ручні записи збережено).",
+            success=None if error else t("ok.accounts_refreshed", n=count),
         )
 
     @app.post("/settings/accounts/add", response_class=HTMLResponse)
     def accounts_add(request: Request, name: str = Form("")) -> HTMLResponse:
+        t = t_for(request)
         error = None
         success = None
         try:
             accounts_store.add_manual(name)
-            success = f"Додано рахунок «{name.strip()}»."
-        except ValueError as exc:
-            error = str(exc)
+            success = t("ok.account_added", name=name.strip())
+        except ValueError:
+            error = t("err.account_empty_name")
         return _accounts_page(
             request,
             templates,
@@ -439,13 +462,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/settings/accounts/delete", response_class=HTMLResponse)
     def accounts_delete(request: Request, name: str = Form("")) -> HTMLResponse:
+        t = t_for(request)
         accounts_store.remove(name)
         return _accounts_page(
             request,
             templates,
             settings,
             accounts_store,
-            success=f"Видалено «{name}».",
+            success=t("ok.account_deleted", name=name),
         )
 
     @app.post("/settings/accounts/primary", response_class=HTMLResponse)
@@ -454,6 +478,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _accounts_page(request, templates, settings, accounts_store)
 
     return app
+
+
+def _i18n_context(request: Request) -> dict[str, Any]:
+    lang = get_lang(request)
+
+    def t(key: str, **kwargs: Any) -> str:
+        return translate(lang, key, **kwargs)
+
+    return {"lang": lang, "t": t}
 
 
 def _select_account(
@@ -525,20 +558,20 @@ def _csv_download_response(
     )
 
 
-def _import_ui_state(job: dict[str, Any], settings: Settings) -> dict[str, Any]:
+def _import_ui_state(job: dict[str, Any], settings: Settings, lang: str) -> dict[str, Any]:
     result: ConversionResult = job["result"]
     token_configured = bool(settings.budgetbakers_api_token.strip())
     account_id = str(job.get("account_id") or "").strip()
     already_imported = bool(job.get("imported"))
     reason: str | None = None
     if already_imported:
-        reason = "Це завдання вже імпортовано."
+        reason = translate(lang, "err.already_imported")
     elif not result.rows:
-        reason = "Немає рядків для імпорту."
+        reason = translate(lang, "err.no_rows_import")
     elif not token_configured:
-        reason = "Спочатку задайте BUDGETBAKERS_API_TOKEN."
+        reason = translate(lang, "err.need_token")
     elif not account_id:
-        reason = "У рахунку немає ID BudgetBakers. Оновіть довідник з API."
+        reason = translate(lang, "err.need_account_id")
     return {
         "token_configured": token_configured,
         "can_import": reason is None,
@@ -573,7 +606,9 @@ def _preview_page(
         import_error_total = len(import_result.errors)
         import_errors = import_result.errors[:IMPORT_ERROR_CAP]
 
+    lang = get_lang(request)
     context: dict[str, Any] = {
+        **_i18n_context(request),
         "active_nav": "convert",
         "job_id": job_id,
         "filename": filename,
@@ -604,7 +639,7 @@ def _preview_page(
         "import_aborted": import_result.aborted if import_result else False,
         "import_posted": import_result.posted if import_result else None,
     }
-    context.update(_import_ui_state(job, settings))
+    context.update(_import_ui_state(job, settings, lang))
     return templates.TemplateResponse(
         request,
         "preview.html",
@@ -629,6 +664,7 @@ def _index_page(
         request,
         "index.html",
         {
+            **_i18n_context(request),
             "active_nav": "convert",
             "accounts": accounts,
             "selected_account": selected,
@@ -675,6 +711,7 @@ def _categories_page(
         request,
         "categories.html",
         {
+            **_i18n_context(request),
             "active_nav": "categories",
             "bank_categories": bank_cats,
             "mappings": mappings,
@@ -700,6 +737,7 @@ def _accounts_page(
         request,
         "accounts.html",
         {
+            **_i18n_context(request),
             "active_nav": "accounts",
             "accounts": accounts_store.list(),
             "token_configured": bool(settings.budgetbakers_api_token.strip()),

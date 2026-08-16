@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,11 +15,18 @@
       <span class="brand-mark">BB</span>
       <span class="brand-text">BudgetBakers Import</span>
     </a>
-    <nav>
-      <a href="/" class="{% if active_nav == 'convert' %}nav-active{% endif %}">Конвертація</a>
-      <a href="/settings/accounts" class="{% if active_nav == 'accounts' %}nav-active{% endif %}">Рахунки</a>
-      <a href="/settings/categories" class="{% if active_nav == 'categories' %}nav-active{% endif %}">Категорії</a>
-    </nav>
+    <div class="top-end">
+      <nav>
+        <a href="/" class="{% if active_nav == 'convert' %}nav-active{% endif %}">{{ t("nav.convert") }}</a>
+        <a href="/settings/accounts" class="{% if active_nav == 'accounts' %}nav-active{% endif %}">{{ t("nav.accounts") }}</a>
+        <a href="/settings/categories" class="{% if active_nav == 'categories' %}nav-active{% endif %}">{{ t("nav.categories") }}</a>
+      </nav>
+      <div class="lang-switch" role="navigation" aria-label="{{ t('lang.switcher') }}">
+        <a href="/lang/uk" class="{% if lang == 'uk' %}lang-active{% endif %}" hreflang="uk" lang="uk">UK</a>
+        <span class="lang-sep" aria-hidden="true">|</span>
+        <a href="/lang/en" class="{% if lang == 'en' %}lang-active{% endif %}" hreflang="en" lang="en">EN</a>
+      </div>
+    </div>
   </header>
   <main class="wrap">
     {% if error %}
@@ -31,7 +38,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="foot">
-    <span>Етап 2: Excel → CSV або імпорт у BudgetBakers через API.</span>
+    <span>{{ t("footer.stage") }}</span>
   </footer>
 </body>
 </html>
