@@ -19,7 +19,11 @@ from fastapi.templating import Jinja2Templates
 
 from app.services.accounts import BudgetBakersAccountsClient
 from app.services.accounts_store import AccountsStore, StoredAccount
-from app.services.categories import BudgetBakersCategoriesClient
+from app.services.categories import (
+    BudgetBakersCategoriesClient,
+    category_to_cache_dict,
+    grouped_bb_categories,
+)
 from app.services.csv_export import (
     ConversionResult,
     build_csv,
@@ -250,7 +254,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             cache_path = Path(settings.data_dir) / "bb_categories_cache.json"
             cache_path.write_text(
                 json.dumps(
-                    [{"id": c.id, "name": c.name} for c in bb_categories],
+                    [category_to_cache_dict(c) for c in bb_categories],
                     ensure_ascii=False,
                     indent=2,
                 )
@@ -405,7 +409,7 @@ def _index_page(
     )
 
 
-def _load_bb_cache(settings: Settings) -> list[dict[str, str]]:
+def _load_bb_cache(settings: Settings) -> list[dict[str, Any]]:
     path = Path(settings.data_dir) / "bb_categories_cache.json"
     if not path.exists():
         return []
@@ -434,7 +438,8 @@ def _categories_page(
             bank_cats.append(key)
     bank_cats = sorted(set(bank_cats))
     bb_cats = _load_bb_cache(settings)
-    bb_names = sorted({c["name"] for c in bb_cats if c.get("name")})
+    bb_groups = grouped_bb_categories(bb_cats)
+    bb_names = [item["name"] for group in bb_groups for item in group["items"]]
 
     return templates.TemplateResponse(
         request,
@@ -443,6 +448,7 @@ def _categories_page(
             "active_nav": "categories",
             "bank_categories": bank_cats,
             "mappings": mappings,
+            "bb_groups": bb_groups,
             "bb_names": bb_names,
             "token_configured": bool(settings.budgetbakers_api_token.strip()),
             "error": error,

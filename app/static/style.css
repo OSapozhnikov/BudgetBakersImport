@@ -166,6 +166,28 @@ input[type="text"], input[type="file"], select {
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 
+select.category-select {
+  width: 100%;
+  min-width: 16rem;
+  font-size: 1rem;
+  line-height: 1.45;
+  padding: 0.8rem 0.9rem;
+}
+
+/* Native optgroup labels: muted parent headers where the browser allows */
+select.category-select optgroup {
+  font-family: var(--font);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+select.category-select option {
+  font-family: var(--font);
+  font-weight: 400;
+  color: var(--ink);
+}
+
 input[type="text"]:focus, select:focus {
   outline: none;
   border-color: var(--primary);

@@ -6,9 +6,11 @@
   <h1>Мапінг категорій</h1>
   <p class="lead">
     Банківські категорії з останніх завантажень зіставляються з назвами категорій BudgetBakers.
-    Мапінг зберігається в <code>category_mappings.json</code>.
-    Якщо довідник BudgetBakers порожній або для категорії немає відповідника —
-    у CSV потрапляє назва категорії з файлу імпорту як є.
+    У списку групи = батьківські категорії у Wallet (наприклад Food &amp; Drinks → Groceries).
+    Мапінг зберігає лише назву категорії (лист) у <code>category_mappings.json</code> —
+    так очікує CSV BudgetBakers.
+    Якщо довідник порожній або для категорії немає відповідника —
+    у CSV потрапляє назва з файлу імпорту як є.
   </p>
 </section>
 
@@ -47,11 +49,17 @@
           <td>{{ bank }}</td>
           <td>
             <input type="hidden" name="bank_{{ loop.index0 }}" value="{{ bank }}">
-            {% if bb_names %}
-            <select name="map_{{ loop.index0 }}">
+            {% if bb_groups %}
+            <select name="map_{{ loop.index0 }}" class="category-select">
               <option value="">— залишити як у файлі імпорту —</option>
-              {% for name in bb_names %}
-              <option value="{{ name }}" {% if mappings.get(bank) == name %}selected{% endif %}>{{ name }}</option>
+              {% for group in bb_groups %}
+              <optgroup label="{{ group.group_name }}">
+                {% for cat in group['items'] %}
+                <option value="{{ cat.name }}" {% if mappings.get(bank) == cat.name %}selected{% endif %}>
+                  {{ cat.name }}
+                </option>
+                {% endfor %}
+              </optgroup>
               {% endfor %}
             </select>
             {% if mappings.get(bank) and mappings.get(bank) not in bb_names %}
