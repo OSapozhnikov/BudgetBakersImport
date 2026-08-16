@@ -19,6 +19,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.convert": {"uk": "Конвертація", "en": "Convert"},
     "nav.accounts": {"uk": "Рахунки", "en": "Accounts"},
     "nav.categories": {"uk": "Категорії", "en": "Categories"},
+    "nav.history": {"uk": "Історія", "en": "History"},
     "footer.stage": {
         "uk": "OSapozhnikov. Version 1.0.0",
         "en": "OSapozhnikov. Version 1.0.0",
@@ -50,6 +51,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "index.no_accounts_option": {"uk": "— немає рахунків —", "en": "— no accounts —"},
     "index.submit": {"uk": "Конвертувати та переглянути", "en": "Convert and preview"},
+    "index.drop_hint": {
+        "uk": "Перетягніть файл сюди або натисніть, щоб обрати",
+        "en": "Drop a file here or click to choose",
+    },
+    "index.drop_active": {
+        "uk": "Відпустіть файл для завантаження",
+        "en": "Drop the file to upload",
+    },
+    "index.file_chosen": {"uk": "Обрано: {name}", "en": "Chosen: {name}"},
     "index.hints_title": {"uk": "Призначення додатку", "en": "About the app"},
     "index.hint_status": {
         "uk": "Обробляє виписку банку та формує CSV або імпортує в BudgetBakers через API",
@@ -94,6 +104,26 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "preview.import": {"uk": "Імпортувати", "en": "Import"},
     "preview.download_csv": {"uk": "Завантажити CSV", "en": "Download CSV"},
     "preview.back": {"uk": "← Назад до завантаження", "en": "← Back to upload"},
+    "preview.selected_counter": {
+        "uk": "Обрано: {n} з {total}",
+        "en": "Selected: {n} of {total}",
+    },
+    "preview.filter_all": {"uk": "Усі", "en": "All"},
+    "preview.filter_unmapped": {"uk": "Без мапінгу", "en": "Unmapped"},
+    "preview.filter_fx": {"uk": "FX", "en": "FX"},
+    "preview.filter_hint": {
+        "uk": "Фільтр лише ховає рядки; позначки прихованих рядків лишаються для імпорту/CSV.",
+        "en": "Filters only hide rows; checked state of hidden rows is kept for import/CSV.",
+    },
+    "preview.tag_duplicate": {"uk": "вже імпортовано", "en": "already imported"},
+    "preview.duplicates_banner": {
+        "uk": "Знайдено {n} можливих дублікатів (позначка знята за замовчуванням).",
+        "en": "Found {n} possible duplicates (unchecked by default).",
+    },
+    "preview.dedup_api_warn": {
+        "uk": "Не вдалося перевірити дублікати через Wallet API — використано лише локальну історію.",
+        "en": "Could not check duplicates via Wallet API — using local history only.",
+    },
     "preview.export_file": {"uk": "Файл експорту:", "en": "Export file:"},
     "preview.import_stats": {
         "uk": (
@@ -140,14 +170,52 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "en": "Include row {n}",
     },
     "preview.tag_unmapped": {"uk": "без мапінгу", "en": "unmapped"},
+    "preview.category_keep": {
+        "uk": "— залишити як є —",
+        "en": "— keep as is —",
+    },
     "preview.js_pick_one": {
         "uk": "Оберіть хоча б одну операцію.",
         "en": "Select at least one transaction.",
     },
-    "preview.js_confirm_import": {
-        "uk": "Імпортувати {count} операцій у BudgetBakers?",
-        "en": "Import {count} transactions into BudgetBakers?",
+    "preview.js_category_error": {
+        "uk": "Не вдалося оновити категорію.",
+        "en": "Could not update category.",
     },
+    "preview.modal_title": {"uk": "Підтвердження імпорту", "en": "Confirm import"},
+    "preview.modal_selected": {"uk": "Обрано операцій", "en": "Selected transactions"},
+    "preview.modal_expense": {"uk": "Витрати (UAH)", "en": "Expenses (UAH)"},
+    "preview.modal_income": {"uk": "Надходження (UAH)", "en": "Income (UAH)"},
+    "preview.modal_unmapped": {
+        "uk": "Без мапінгу серед обраних",
+        "en": "Unmapped among selected",
+    },
+    "preview.modal_duplicates": {
+        "uk": "Дублікати серед обраних",
+        "en": "Duplicates among selected",
+    },
+    "preview.modal_account": {"uk": "Рахунок", "en": "Account"},
+    "preview.modal_confirm": {"uk": "Підтвердити імпорт", "en": "Confirm import"},
+    "preview.modal_cancel": {"uk": "Скасувати", "en": "Cancel"},
+    # History
+    "history.title": {"uk": "Історія — BudgetBakers Import", "en": "History — BudgetBakers Import"},
+    "history.eyebrow": {"uk": "Імпорт", "en": "Import"},
+    "history.h1": {"uk": "Історія імпортів", "en": "Import history"},
+    "history.lead": {
+        "uk": "Останні успішні імпорти в BudgetBakers (до 100 записів).",
+        "en": "Recent successful imports into BudgetBakers (up to 100 entries).",
+    },
+    "history.empty": {
+        "uk": "Ще немає імпортів. Після успішного імпорту з попереднього перегляду записи з’являться тут.",
+        "en": "No imports yet. After a successful import from the preview, entries will appear here.",
+    },
+    "history.col_date": {"uk": "Дата", "en": "Date"},
+    "history.col_file": {"uk": "Файл", "en": "File"},
+    "history.col_account": {"uk": "Рахунок", "en": "Account"},
+    "history.col_requested": {"uk": "Запитано", "en": "Requested"},
+    "history.col_succeeded": {"uk": "Успішно", "en": "Succeeded"},
+    "history.col_failed": {"uk": "Помилок", "en": "Failed"},
+    "history.back": {"uk": "← До конвертації", "en": "← Back to convert"},
     # Accounts
     "accounts.title": {"uk": "Рахунки — BudgetBakers Import", "en": "Accounts — BudgetBakers Import"},
     "accounts.eyebrow": {"uk": "Налаштування", "en": "Settings"},
@@ -337,6 +405,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uk": "Назва рахунку порожня.",
         "en": "Account name is empty.",
     },
+    "err.row_not_found": {
+        "uk": "Рядок не знайдено.",
+        "en": "Row not found.",
+    },
 }
 
 
@@ -411,6 +483,10 @@ def _get_safe_redirect_path(path: str, query: str = "") -> str:
         return "/settings/categories"
     if bare.startswith("/settings/accounts/"):
         return "/settings/accounts"
+    if bare.startswith("/settings/history"):
+        return "/settings/history"
+    if bare.startswith("/jobs/"):
+        return "/"
     if query:
         return f"{bare}?{query}"
     return bare

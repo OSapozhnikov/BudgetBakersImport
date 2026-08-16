@@ -41,8 +41,15 @@ from app.services.csv_export import (
     convert_rows,
 )
 from app.services.excel_parser import parse_excel
+from app.services.fingerprints import (
+    FingerprintStore,
+    fingerprint_from_api_item,
+    fingerprint_row,
+)
 from app.services.fx_nbu import NbuFxConverter
+from app.services.import_history import ImportHistoryStore
 from app.services.mapping_store import CategoryMappingStore
+from app.services.prefs_store import PrefsStore
 from app.services.records import BudgetBakersRecordsClient, RecordImportResult
 from app.settings import Settings, get_settings
 
@@ -104,11 +111,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     store = CategoryMappingStore(settings.data_dir)
     accounts_store = AccountsStore(settings.data_dir)
+    fingerprint_store = FingerprintStore(settings.data_dir)
+    history_store = ImportHistoryStore(settings.data_dir)
+    prefs_store = PrefsStore(settings.data_dir)
     jobs = JobStore()
 
     app.state.settings = settings
     app.state.mapping_store = store
     app.state.accounts_store = accounts_store
+    app.state.fingerprint_store = fingerprint_store
+    app.state.history_store = history_store
+    app.state.prefs_store = prefs_store
     app.state.jobs = jobs
 
     @app.get("/healthz")
@@ -127,7 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
-        return _index_page(request, templates, settings, accounts_store)
+        return _index_page(request, templates, settings, accounts_store, prefs_store)
 
     @app.post("/convert", response_class=HTMLResponse)
     async def convert(
@@ -144,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
+                prefs_store,
                 error=t("err.add_account_first"),
                 status_code=400,
             )
@@ -154,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
+                prefs_store,
                 error=t("err.pick_account"),
                 status_code=400,
                 selected_account=account,
@@ -166,6 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
+                prefs_store,
                 error=t("err.need_xlsx"),
                 status_code=400,
                 selected_account=account,
@@ -178,6 +194,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
+                prefs_store,
                 error=t("err.empty_file"),
                 status_code=400,
                 selected_account=account,
@@ -192,6 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 templates,
                 settings,
                 accounts_store,
+                prefs_store,
                 error=t("err.excel_read", exc=exc),
                 status_code=400,
                 selected_account=account,
@@ -212,11 +230,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result.warnings = list(dict.fromkeys([*parsed.warnings, *result.warnings]))
 
         stored = next((a for a in accounts if a.name == account), None)
+        account_id = stored.id if stored else None
+        dedup_warning = _mark_duplicates(
+            result.rows,
+            account_id=account_id,
+            fingerprint_store=fingerprint_store,
+            settings=settings,
+            lang=get_lang(request),
+        )
+        if dedup_warning:
+            result.warnings = list(dict.fromkeys([*result.warnings, dedup_warning]))
+
+        prefs_store.set_last_account_name(account)
+
         job_id = jobs.put(
             result,
             account,
             filename,
-            account_id=stored.id if stored else None,
+            account_id=account_id,
         )
         job = jobs.get(job_id)
         assert job is not None
@@ -324,6 +355,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if import_result.succeeded:
             job["imported"] = True
+            _persist_successful_import(
+                fingerprint_store=fingerprint_store,
+                history_store=history_store,
+                job=job,
+                job_id=job_id,
+                selected=selected,
+                import_result=import_result,
+                account_id=account_id,
+            )
 
         total = import_result.posted + import_result.not_sent
         success = t("ok.imported", succeeded=import_result.succeeded, total=total)
@@ -351,6 +391,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             success=success,
             import_result=import_result,
         )
+
+    @app.post("/jobs/{job_id}/rows/{index}/category")
+    def patch_row_category(
+        request: Request,
+        job_id: str,
+        index: int,
+        category: str = Form(""),
+    ) -> Response:
+        """Update category on one job row only (does not write mapping_store)."""
+        t = t_for(request)
+        job = jobs.get(job_id)
+        if not job:
+            return HTMLResponse(render_job_not_found(request), status_code=404)
+        result: ConversionResult = job["result"]
+        if index < 0 or index >= len(result.rows):
+            return Response(content=t("err.row_not_found"), status_code=404)
+        row = result.rows[index]
+        new_category = (category or "").strip()
+        row.category = new_category
+        # Job-only: keep bank_category; mapped/unmapped reflect BB cache presence.
+        bb_names = {
+            str(item.get("name") or "").strip().casefold()
+            for item in _load_bb_cache(settings)
+            if str(item.get("name") or "").strip()
+        }
+        if new_category and new_category.casefold() in bb_names:
+            row.mapped = True
+            row.unmapped = False
+        elif new_category:
+            row.mapped = False
+            row.unmapped = True
+        else:
+            row.mapped = False
+            row.unmapped = bool(row.bank_category)
+        # Refresh CSV cache for full-job download path
+        job["csv"] = build_csv(result.rows)
+        job["export_filename"] = build_export_filename(
+            str(job.get("account_name") or ""),
+            result.rows,
+        )
+        return Response(status_code=204)
+
+    @app.get("/settings/history", response_class=HTMLResponse)
+    def import_history(request: Request) -> HTMLResponse:
+        return _history_page(request, templates, history_store)
 
     @app.get("/settings/categories", response_class=HTMLResponse)
     def categories_settings(request: Request) -> HTMLResponse:
@@ -493,18 +578,116 @@ def _select_account(
     accounts: list[StoredAccount],
     settings: Settings,
     preferred: str | None = None,
+    last_account_name: str | None = None,
 ) -> str | None:
+    """preferred → last_account_name → primary → DEFAULT_ACCOUNT_NAME → first."""
     if not accounts:
         return None
     names = [a.name for a in accounts]
     if preferred and preferred in names:
         return preferred
+    if last_account_name and last_account_name in names:
+        return last_account_name
     for acc in accounts:
         if acc.primary:
             return acc.name
     if settings.default_account_name in names:
         return settings.default_account_name
     return names[0]
+
+
+def _mark_duplicates(
+    rows: list[ExportRow],
+    *,
+    account_id: str | None,
+    fingerprint_store: FingerprintStore,
+    settings: Settings,
+    lang: str,
+) -> str | None:
+    """Set ``is_duplicate`` from local store and optional Wallet GET /records.
+
+    Returns a muted warning string if the API check failed (non-fatal).
+    """
+    if not rows:
+        return None
+
+    local = fingerprint_store.load()
+    api_fps: set[str] = set()
+    api_warning: str | None = None
+    token = settings.budgetbakers_api_token.strip()
+    acc_id = (account_id or "").strip()
+
+    if token and acc_id:
+        try:
+            dates = [r.date for r in rows]
+            with BudgetBakersRecordsClient(
+                base_url=settings.budgetbakers_api_base,
+                token=settings.budgetbakers_api_token,
+            ) as client:
+                api_items = client.list_records(
+                    account_id=acc_id,
+                    date_from=min(dates),
+                    date_to=max(dates),
+                )
+            for item in api_items:
+                fp = fingerprint_from_api_item(item, acc_id)
+                if fp:
+                    api_fps.add(fp)
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("Optional GET /records dedup failed: %s", exc)
+            api_warning = translate(lang, "preview.dedup_api_warn")
+
+    for row in rows:
+        if not acc_id:
+            row.is_duplicate = False
+            continue
+        fp = fingerprint_row(row, acc_id)
+        row.is_duplicate = fp in local or fp in api_fps
+
+    return api_warning
+
+
+def _persist_successful_import(
+    *,
+    fingerprint_store: FingerprintStore,
+    history_store: ImportHistoryStore,
+    job: dict[str, Any],
+    job_id: str,
+    selected: list[ExportRow],
+    import_result: RecordImportResult,
+    account_id: str,
+) -> None:
+    """Save fingerprints for succeeded rows and append history entry."""
+    succeeded_rows: list[ExportRow] = []
+    if import_result.succeeded_indices:
+        seen: set[int] = set()
+        for idx in import_result.succeeded_indices:
+            if idx < 0 or idx >= len(selected) or idx in seen:
+                continue
+            seen.add(idx)
+            succeeded_rows.append(selected[idx])
+    elif import_result.succeeded > 0 and not import_result.failed:
+        # Best-effort: all non-zero selected rows that were posted succeeded.
+        succeeded_rows = [
+            row
+            for row in selected
+            if row.amount.quantize(Decimal("0.01")) != 0
+        ][: import_result.succeeded]
+
+    if succeeded_rows and account_id:
+        fps = [fingerprint_row(row, account_id) for row in succeeded_rows]
+        fingerprint_store.add_many(fps)
+
+    history_store.append(
+        filename=str(job.get("filename") or ""),
+        account_name=str(job.get("account_name") or ""),
+        account_id=account_id,
+        requested=len(selected),
+        succeeded=import_result.succeeded,
+        failed=import_result.failed,
+        skipped_zero=import_result.skipped_zero,
+        job_id=job_id,
+    )
 
 
 def _format_int_display(value: int) -> str:
@@ -600,6 +783,7 @@ def _preview_page(
     )
     total_rows = len(result.rows)
     total_amount_uah = sum((r.amount for r in result.rows), Decimal("0"))
+    duplicate_count = sum(1 for r in result.rows if r.is_duplicate)
     import_errors = []
     import_error_total = 0
     if import_result is not None:
@@ -607,6 +791,10 @@ def _preview_page(
         import_errors = import_result.errors[:IMPORT_ERROR_CAP]
 
     lang = get_lang(request)
+    bb_cats = _load_bb_cache(settings)
+    bb_groups = grouped_bb_categories(bb_cats)
+    bb_names = [item["name"] for group in bb_groups for item in group["items"]]
+
     context: dict[str, Any] = {
         **_i18n_context(request),
         "active_nav": "convert",
@@ -619,6 +807,7 @@ def _preview_page(
         "total_rows_display": _format_int_display(total_rows),
         "total_amount_uah": total_amount_uah,
         "total_amount_uah_display": _format_uah_display(total_amount_uah),
+        "duplicate_count": duplicate_count,
         "preview_limit": settings.preview_row_limit,
         "skipped": result.skipped,
         "converted_fx_count": result.converted_fx_count,
@@ -626,6 +815,8 @@ def _preview_page(
         "unmapped_categories": result.unmapped_categories,
         "warnings": result.warnings[:30],
         "warning_total": len(result.warnings),
+        "bb_groups": bb_groups,
+        "bb_names": bb_names,
         "error": error,
         "success": success,
         "import_result": import_result,
@@ -653,13 +844,19 @@ def _index_page(
     templates: Jinja2Templates,
     settings: Settings,
     accounts_store: AccountsStore,
+    prefs_store: PrefsStore,
     *,
     error: str | None = None,
     status_code: int = 200,
     selected_account: str | None = None,
 ) -> HTMLResponse:
     accounts = accounts_store.list()
-    selected = _select_account(accounts, settings, selected_account)
+    selected = _select_account(
+        accounts,
+        settings,
+        preferred=selected_account,
+        last_account_name=prefs_store.get_last_account_name(),
+    )
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -744,6 +941,23 @@ def _accounts_page(
             "default_account": settings.default_account_name,
             "error": error,
             "success": success,
+        },
+    )
+
+
+def _history_page(
+    request: Request,
+    templates: Jinja2Templates,
+    history_store: ImportHistoryStore,
+) -> HTMLResponse:
+    entries = history_store.list()
+    return templates.TemplateResponse(
+        request,
+        "history.html",
+        {
+            **_i18n_context(request),
+            "active_nav": "history",
+            "entries": entries,
         },
     )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -11,6 +12,7 @@ from app.services.csv_export import ExportRow
 
 RECORDS_BATCH_SIZE = 20
 NOTE_MAX_LEN = 255
+RECORDS_PAGE_SIZE = 100
 _TWO_PLACES = Decimal("0.01")
 
 
@@ -33,6 +35,9 @@ class RecordImportResult:
         succeeded + failed + skipped_zero == number of input rows.
     After an abort (401/403/429/etc.), ``not_sent`` is the remainder that
     never left the client; those rows are not in ``failed``.
+
+    ``succeeded_indices`` are indices into the original ``rows`` iterable
+    passed to ``import_rows`` (not batch-local positions).
     """
 
     succeeded: int = 0
@@ -40,6 +45,7 @@ class RecordImportResult:
     skipped_zero: int = 0
     not_sent: int = 0
     errors: list[RecordItemError] = field(default_factory=list)
+    succeeded_indices: list[int] = field(default_factory=list)
     fatal_error: str | None = None
     aborted: bool = False
 
@@ -87,6 +93,61 @@ class BudgetBakersRecordsClient:
     @property
     def configured(self) -> bool:
         return bool(self.token)
+
+    def list_records(
+        self,
+        *,
+        account_id: str,
+        date_from: date,
+        date_to: date,
+        page_size: int = RECORDS_PAGE_SIZE,
+    ) -> list[dict[str, Any]]:
+        """Fetch Wallet records for an account in a date range (paginated).
+
+        Uses ``recordDate=gte.`` / ``lte.`` and ``accountId`` filters.
+        """
+        if not self.token:
+            raise RuntimeError(
+                "BUDGETBAKERS_API_TOKEN не задано. "
+                "Додайте токен у .env щоб завантажити записи."
+            )
+        account = str(account_id or "").strip()
+        if not account:
+            raise ValueError("accountId порожній.")
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/json",
+        }
+        url = f"{self.base_url}/records"
+        limit = min(max(int(page_size), 1), 200)
+        start = date_from.isoformat()
+        end = date_to.isoformat()
+        results: list[dict[str, Any]] = []
+        offset = 0
+
+        while True:
+            params: dict[str, Any] = {
+                "limit": limit,
+                "offset": offset,
+                "accountId": account,
+                "recordDate": [f"gte.{start}", f"lte.{end}"],
+            }
+            resp = self._client.get(url, headers=headers, params=params)
+            if resp.status_code in (401, 403, 404, 429):
+                raise RuntimeError(_auth_or_limit_message(resp))
+            if resp.status_code >= 400:
+                raise RuntimeError(_http_error_message(resp))
+            payload = _response_json(resp)
+            items = _result_items(payload)
+            if not items:
+                break
+            results.extend(items)
+            if len(items) < limit:
+                break
+            offset += len(items)
+
+        return results
 
     def import_rows(
         self,
@@ -180,9 +241,12 @@ class BudgetBakersRecordsClient:
                 return result
 
             payload = _response_json(resp)
-            succeeded, errors = _parse_batch_results(resp.status_code, payload, batch)
-            result.succeeded += succeeded
-            result.failed += len(batch) - succeeded
+            succeeded_indices, errors = _parse_batch_results(
+                resp.status_code, payload, batch
+            )
+            result.succeeded += len(succeeded_indices)
+            result.failed += len(batch) - len(succeeded_indices)
+            result.succeeded_indices.extend(succeeded_indices)
             result.errors.extend(errors)
 
         return result
@@ -263,14 +327,15 @@ def _parse_batch_results(
     status_code: int,
     payload: Any,
     batch: Sequence[_PreparedRecord],
-) -> tuple[int, list[RecordItemError]]:
+) -> tuple[list[int], list[RecordItemError]]:
+    """Return (original-row indices that succeeded, item errors)."""
     items = _result_items(payload)
     if status_code == 200 and not items:
-        return len(batch), []
+        return [item.row_index for item in batch], []
 
     errors: list[RecordItemError] = []
     seen: set[int] = set()
-    succeeded = 0
+    succeeded_indices: list[int] = []
 
     for position, item in enumerate(items):
         if not isinstance(item, dict):
@@ -281,7 +346,7 @@ def _parse_batch_results(
         seen.add(idx)
         prepared = batch[idx]
         if _item_succeeded(item):
-            succeeded += 1
+            succeeded_indices.append(prepared.row_index)
             continue
         errors.append(
             RecordItemError(
@@ -297,7 +362,7 @@ def _parse_batch_results(
         if idx in seen:
             continue
         if status_code == 200:
-            succeeded += 1
+            succeeded_indices.append(prepared.row_index)
             continue
         errors.append(
             RecordItemError(
@@ -309,7 +374,7 @@ def _parse_batch_results(
             )
         )
 
-    return succeeded, errors
+    return succeeded_indices, errors
 
 
 def _result_items(payload: Any) -> list[dict[str, Any]]:

@@ -42,6 +42,10 @@ class TranslateTests(unittest.TestCase):
         text = translate("en", "ok.imported", succeeded=3, total=5)
         self.assertEqual(text, "Imported 3 of 5")
 
+    def test_nav_history_key(self) -> None:
+        self.assertEqual(translate("uk", "nav.history"), "Історія")
+        self.assertEqual(translate("en", "nav.history"), "History")
+
     def test_format_with_braces_in_values(self) -> None:
         text = translate("en", "ok.account_added", name="Cash {main}")
         self.assertEqual(text, "Added account “Cash {main}”.")

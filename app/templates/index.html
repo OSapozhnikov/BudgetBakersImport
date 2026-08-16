@@ -13,10 +13,17 @@
 </div>
 {% endif %}
 
-<form class="panel enter" action="/convert" method="post" enctype="multipart/form-data">
+<form class="panel enter" id="upload-form" action="/convert" method="post" enctype="multipart/form-data">
   <label class="field">
     <span>{{ t("index.file_label") }}</span>
-    <input type="file" name="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required {% if not accounts %}disabled{% endif %}>
+    <div class="dropzone{% if not accounts %} is-disabled{% endif %}" id="dropzone"
+         {% if not accounts %}aria-disabled="true"{% endif %}>
+      <input type="file" id="file-input" name="file"
+             accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+             required {% if not accounts %}disabled{% endif %}>
+      <p class="dropzone-hint" id="dropzone-hint">{{ t("index.drop_hint") }}</p>
+      <p class="dropzone-file muted" id="dropzone-file" hidden></p>
+    </div>
   </label>
 
   <label class="field">
@@ -47,4 +54,66 @@
     <li>{{ t("index.hint_csv").replace("{code}", "<code>,</code>") | safe }}</li>
   </ul>
 </aside>
+
+<script>
+(function () {
+  var zone = document.getElementById("dropzone");
+  var input = document.getElementById("file-input");
+  var hint = document.getElementById("dropzone-hint");
+  var fileLabel = document.getElementById("dropzone-file");
+  if (!zone || !input || zone.classList.contains("is-disabled")) return;
+
+  var i18n = {
+    hint: {{ t("index.drop_hint") | tojson }},
+    active: {{ t("index.drop_active") | tojson }},
+    chosen: {{ t("index.file_chosen", name="__NAME__") | tojson }}
+  };
+
+  function showFile(file) {
+    if (!file || !fileLabel || !hint) return;
+    hint.hidden = true;
+    fileLabel.hidden = false;
+    fileLabel.textContent = i18n.chosen.replace("__NAME__", file.name);
+  }
+
+  function isExcel(file) {
+    if (!file || !file.name) return false;
+    var lower = file.name.toLowerCase();
+    return lower.endsWith(".xlsx") || lower.endsWith(".xlsm");
+  }
+
+  ["dragenter", "dragover"].forEach(function (evt) {
+    zone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.add("is-dragover");
+      if (hint) hint.textContent = i18n.active;
+    });
+  });
+
+  ["dragleave", "drop"].forEach(function (evt) {
+    zone.addEventListener(evt, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.remove("is-dragover");
+      if (hint && !input.files.length) hint.textContent = i18n.hint;
+    });
+  });
+
+  zone.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) return;
+    var file = files[0];
+    if (!isExcel(file)) return;
+    var dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    showFile(file);
+  });
+
+  input.addEventListener("change", function () {
+    if (input.files && input.files[0]) showFile(input.files[0]);
+  });
+})();
+</script>
 {% endblock %}

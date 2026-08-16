@@ -148,6 +148,7 @@ class ImportRowsTests(unittest.TestCase):
         self.assertEqual(result.succeeded, 21)
         self.assertEqual(result.failed, 0)
         self.assertFalse(result.aborted)
+        self.assertEqual(len(result.succeeded_indices), 21)
 
     def test_http_200_all_success(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -182,6 +183,7 @@ class ImportRowsTests(unittest.TestCase):
 
         self.assertEqual(result.succeeded, 1)
         self.assertEqual(result.failed, 1)
+        self.assertEqual(result.succeeded_indices, [0])
         self.assertEqual(len(result.errors), 1)
         self.assertEqual(result.errors[0].note, "bad")
         self.assertIn("duplicate", result.errors[0].error)

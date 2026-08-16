@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ t("history.title") }}{% endblock %}
+{% block content %}
+<section class="hero-block enter">
+  <p class="eyebrow">{{ t("history.eyebrow") }}</p>
+  <h1>{{ t("history.h1") }}</h1>
+  <p class="lead">{{ t("history.lead") }}</p>
+</section>
+
+<div class="actions enter">
+  <a class="btn" href="/">{{ t("history.back") }}</a>
+</div>
+
+{% if not entries %}
+<div class="alert enter">
+  {{ t("history.empty") }}
+</div>
+{% else %}
+<div class="table-wrap enter">
+  <table>
+    <thead>
+      <tr>
+        <th>{{ t("history.col_date") }}</th>
+        <th>{{ t("history.col_file") }}</th>
+        <th>{{ t("history.col_account") }}</th>
+        <th class="num">{{ t("history.col_requested") }}</th>
+        <th class="num">{{ t("history.col_succeeded") }}</th>
+        <th class="num">{{ t("history.col_failed") }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="num">{{ e.created_at[:19].replace('T', ' ') }}{% if e.created_at.endswith('Z') or '+' in e.created_at[19:] %} UTC{% endif %}</td>
+        <td>{{ e.filename }}</td>
+        <td>{{ e.account_name }}</td>
+        <td class="num">{{ e.requested }}</td>
+        <td class="num">{{ e.succeeded }}</td>
+        <td class="num">{{ e.failed }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

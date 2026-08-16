@@ -42,6 +42,7 @@ class ExportRow:
     fx_warning: str | None = None
     unmapped: bool = False
     counter_party: str = ""
+    is_duplicate: bool = False
 
 
 @dataclass
