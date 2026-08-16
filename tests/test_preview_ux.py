@@ -13,12 +13,13 @@ from unittest.mock import MagicMock, patch
 import httpx
 from fastapi.testclient import TestClient
 
-from app.main import _mark_duplicates, _select_account, create_app
+from app.main import create_app
 from app.services.accounts_store import StoredAccount
 from app.services.csv_export import ConversionResult, ExportRow
 from app.services.fingerprints import FingerprintStore, fingerprint_row
-from app.services.records import BudgetBakersRecordsClient
+from app.services.records import BudgetBakersRecordsClient, RecordImportResult
 from app.settings import Settings
+from app.use_cases.convert import mark_duplicates, select_account
 
 
 def _row(
@@ -55,23 +56,23 @@ class SelectAccountTests(unittest.TestCase):
         ]
         settings = Settings(default_account_name="Account")
         self.assertEqual(
-            _select_account(accounts, settings, preferred="A"),
+            select_account(accounts, settings, preferred="A"),
             "A",
         )
         self.assertEqual(
-            _select_account(
+            select_account(
                 accounts, settings, preferred=None, last_account_name="Last"
             ),
             "Last",
         )
         self.assertEqual(
-            _select_account(accounts, settings, preferred=None, last_account_name=None),
+            select_account(accounts, settings, preferred=None, last_account_name=None),
             "B",
         )
         no_primary = [StoredAccount(name="X"), StoredAccount(name="Account")]
-        self.assertEqual(_select_account(no_primary, settings), "Account")
+        self.assertEqual(select_account(no_primary, settings), "Account")
         self.assertEqual(
-            _select_account([StoredAccount(name="Only")], settings),
+            select_account([StoredAccount(name="Only")], settings),
             "Only",
         )
 
@@ -92,7 +93,7 @@ class MarkDuplicatesTests(unittest.TestCase):
         row = _row()
         fp = fingerprint_row(row, "acc-1")
         self.store.add_many([fp])
-        warn = _mark_duplicates(
+        warn = mark_duplicates(
             [row],
             account_id="acc-1",
             fingerprint_store=self.store,
@@ -105,7 +106,7 @@ class MarkDuplicatesTests(unittest.TestCase):
     def test_no_account_id_clears_flag(self) -> None:
         row = _row()
         row.is_duplicate = True
-        _mark_duplicates(
+        mark_duplicates(
             [row],
             account_id=None,
             fingerprint_store=self.store,
@@ -131,13 +132,13 @@ class MarkDuplicatesTests(unittest.TestCase):
             }
         ]
 
-        with patch("app.main.BudgetBakersRecordsClient") as client_cls:
+        with patch("app.use_cases.convert.BudgetBakersRecordsClient") as client_cls:
             client = MagicMock()
             client.__enter__.return_value = client
             client.__exit__.return_value = None
             client.list_records.return_value = api_items
             client_cls.return_value = client
-            warn = _mark_duplicates(
+            warn = mark_duplicates(
                 [row],
                 account_id="acc-1",
                 fingerprint_store=self.store,
@@ -155,13 +156,13 @@ class MarkDuplicatesTests(unittest.TestCase):
             data_dir=self._tmp.name,
             budgetbakers_api_token="tok",
         )
-        with patch("app.main.BudgetBakersRecordsClient") as client_cls:
+        with patch("app.use_cases.convert.BudgetBakersRecordsClient") as client_cls:
             client = MagicMock()
             client.__enter__.return_value = client
             client.__exit__.return_value = None
             client.list_records.side_effect = RuntimeError("boom")
             client_cls.return_value = client
-            warn = _mark_duplicates(
+            warn = mark_duplicates(
                 [row],
                 account_id="acc-1",
                 fingerprint_store=self.store,
@@ -266,7 +267,7 @@ class PreviewUxRouteTests(unittest.TestCase):
 
         job = self.app.state.jobs.get(job_id)
         assert job is not None
-        row: ExportRow = job["result"].rows[0]
+        row: ExportRow = job.result.rows[0]
         self.assertEqual(row.category, "Food")
         self.assertTrue(row.mapped)
         self.assertFalse(row.unmapped)
@@ -278,6 +279,40 @@ class PreviewUxRouteTests(unittest.TestCase):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("/settings/history", resp.text)
+
+    def test_import_retry_remaining_rows(self) -> None:
+        result = ConversionResult(
+            rows=[
+                _row(note="first", amount="-1.00"),
+                _row(note="second", amount="-2.00"),
+            ]
+        )
+        job_id = self.app.state.jobs.put(
+            result, "Cash", "stmt.xlsx", account_id="acc-cash"
+        )
+        first = RecordImportResult(succeeded=1, failed=1, succeeded_indices=[0])
+        second = RecordImportResult(succeeded=1, failed=0, succeeded_indices=[0])
+
+        with patch("app.use_cases.import_records.BudgetBakersRecordsClient") as client_cls:
+            client = MagicMock()
+            client.__enter__.return_value = client
+            client.__exit__.return_value = None
+            client.import_rows.side_effect = [first, second]
+            client_cls.return_value = client
+
+            resp = self.client.post(f"/import/{job_id}", data={"row": ["0", "1"]})
+            self.assertEqual(resp.status_code, 200)
+            job = self.app.state.jobs.get(job_id)
+            assert job is not None
+            self.assertEqual(job.imported_indices, {0})
+            self.assertFalse(job.imported)
+
+            resp2 = self.client.post(f"/import/{job_id}", data={"row": ["1"]})
+            self.assertEqual(resp2.status_code, 200)
+            self.assertEqual(job.imported_indices, {0, 1})
+            self.assertTrue(job.imported)
+
+        self.assertEqual(client.import_rows.call_count, 2)
 
 
 if __name__ == "__main__":

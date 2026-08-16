@@ -37,7 +37,7 @@ class _PassthroughFx(NbuFxConverter):
             rate=Decimal("1") if code == "UAH" else None,
             rate_date=op_date if code == "UAH" else None,
             converted=False,
-            warning=None if code == "UAH" else f"no rate for {code}",
+            warning=None,
         )
 
     def close(self) -> None:

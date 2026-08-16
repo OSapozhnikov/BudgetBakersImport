@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
-from app.services.categories import _extract_items
+from app.clients.budgetbakers import BudgetBakersClient
 
 
 @dataclass(frozen=True)
@@ -24,18 +22,14 @@ class BudgetBakersAccountsClient:
         *,
         base_url: str,
         token: str,
-        client: httpx.Client | None = None,
+        client: Any = None,
         page_size: int = 100,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.token = token.strip()
+        self._http = BudgetBakersClient(base_url=base_url, token=token, client=client)
         self.page_size = page_size
-        self._client = client or httpx.Client(timeout=30.0)
-        self._owns_client = client is None
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self._http.close()
 
     def __enter__(self) -> BudgetBakersAccountsClient:
         return self
@@ -45,51 +39,22 @@ class BudgetBakersAccountsClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.token)
+        return self._http.configured
 
     def list_accounts(self, *, include_archived: bool = False) -> list[BudgetBakersAccount]:
-        if not self.token:
-            raise RuntimeError(
-                "BUDGETBAKERS_API_TOKEN не задано. "
-                "Додайте токен у .env щоб завантажити рахунки."
-            )
-
-        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+        items = self._http.paginate_get(
+            "/accounts",
+            page_size=self.page_size,
+            resource="/accounts",
+        )
         results: list[BudgetBakersAccount] = []
-        offset = 0
-
-        while True:
-            params = {"limit": self.page_size, "offset": offset}
-            url = f"{self.base_url}/accounts"
-            resp = self._client.get(url, headers=headers, params=params)
-            if resp.status_code == 401:
-                raise RuntimeError("BudgetBakers API: невірний або протермінований токен (401).")
-            if resp.status_code == 404:
-                raise RuntimeError(
-                    "BudgetBakers API: 404 для /accounts. "
-                    "Перевірте BUDGETBAKERS_API_BASE "
-                    "(очікується https://rest.budgetbakers.com/wallet/v1/api)."
-                )
-            resp.raise_for_status()
-            payload = resp.json()
-            items = _extract_items(payload)
-            if not items:
-                break
-            for item in items:
-                acc = _parse_account(item)
-                if not acc:
-                    continue
-                if acc.archived and not include_archived:
-                    continue
-                results.append(acc)
-            next_offset = payload.get("nextOffset") if isinstance(payload, dict) else None
-            if next_offset is None or next_offset == offset:
-                if len(items) < self.page_size:
-                    break
-                offset += self.page_size
-            else:
-                offset = int(next_offset)
-
+        for item in items:
+            acc = _parse_account(item)
+            if not acc:
+                continue
+            if acc.archived and not include_archived:
+                continue
+            results.append(acc)
         by_id = {a.id: a for a in results}
         return sorted(by_id.values(), key=lambda a: a.name.casefold())
 

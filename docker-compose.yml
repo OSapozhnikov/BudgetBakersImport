@@ -14,6 +14,7 @@ services:
       BUDGETBAKERS_API_BASE: ${BUDGETBAKERS_API_BASE:-https://rest.budgetbakers.com/wallet/v1/api}
       BUDGETBAKERS_API_TOKEN: ${BUDGETBAKERS_API_TOKEN:-}
       NBU_FX_LOOKBACK_DAYS: ${NBU_FX_LOOKBACK_DAYS:-7}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-15728640}
     volumes:
       - ./data:/data
     restart: unless-stopped

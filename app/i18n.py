@@ -1,415 +1,36 @@
-"""Lightweight Ukrainian / English UI translations."""
+"""Ukrainian / English UI translations loaded from app/locales/*.json."""
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.errors import ErrorMessage
+
 COOKIE_NAME = "bbi_lang"
 DEFAULT_LANG = "uk"
 SUPPORTED_LANGS = ("uk", "en")
 COOKIE_MAX_AGE = 365 * 24 * 60 * 60
 
-# Message id → {lang: text}. Use ``{name}`` placeholders for .format().
-TRANSLATIONS: dict[str, dict[str, str]] = {
-    # Base / nav
-    "nav.convert": {"uk": "Конвертація", "en": "Convert"},
-    "nav.accounts": {"uk": "Рахунки", "en": "Accounts"},
-    "nav.categories": {"uk": "Категорії", "en": "Categories"},
-    "nav.history": {"uk": "Історія", "en": "History"},
-    "footer.stage": {
-        "uk": "OSapozhnikov. Version 1.0.0",
-        "en": "OSapozhnikov. Version 1.0.0",
-    },
-    "lang.switcher": {"uk": "Мова", "en": "Language"},
-    # Index
-    "index.title": {"uk": "Конвертація — BudgetBakers Import", "en": "Convert — BudgetBakers Import"},
-    "index.eyebrow": {"uk": "Конвертація", "en": "Convert"},
-    "index.h1": {"uk": "Завантаження виписки", "en": "Upload statement"},
-    "index.lead": {
-        "uk": (
-            "Завантажте банківську Excel-виписку (.xlsx). Суми в USD/EUR конвертуються в UAH "
-            "за курсом НБУ на дату операції. Усі рядки потрапляють на один рахунок з довідника."
-        ),
-        "en": (
-            "Upload a bank Excel statement (.xlsx). USD/EUR amounts are converted to UAH "
-            "using the NBU rate on the transaction date. All rows go to one account from the directory."
-        ),
-    },
-    "index.empty_accounts": {
-        "uk": "Довідник рахунків порожній. Спочатку {link}додайте або завантажте рахунки{/link}.",
-        "en": "The accounts directory is empty. First {link}add or load accounts{/link}.",
-    },
-    "index.file_label": {"uk": "Файл", "en": "File"},
-    "index.account_label": {"uk": "Рахунок BudgetBakers", "en": "BudgetBakers account"},
-    "index.account_hint": {
-        "uk": "Список з {link}довідника рахунків{/link}. Однакова назва для всіх рядків.",
-        "en": "List from the {link}accounts directory{/link}. The same name for every row.",
-    },
-    "index.no_accounts_option": {"uk": "— немає рахунків —", "en": "— no accounts —"},
-    "index.submit": {"uk": "Конвертувати та переглянути", "en": "Convert and preview"},
-    "index.drop_hint": {
-        "uk": "Перетягніть файл сюди або натисніть, щоб обрати",
-        "en": "Drop a file here or click to choose",
-    },
-    "index.drop_active": {
-        "uk": "Відпустіть файл для завантаження",
-        "en": "Drop the file to upload",
-    },
-    "index.file_chosen": {"uk": "Обрано: {name}", "en": "Chosen: {name}"},
-    "index.hints_title": {"uk": "Призначення додатку", "en": "About the app"},
-    "index.hint_status": {
-        "uk": "Обробляє виписку банку та формує CSV або імпортує в BudgetBakers через API",
-        "en": "Processes the bank statement and exports CSV or imports into BudgetBakers via API",
-    },
-    "index.hint_fx": {
-        "uk": "Конвертує валюту операції в UAH — через НБУ",
-        "en": "Converts the transaction currency to UAH — via NBU",
-    },
-    "index.hint_mapping": {
-        "uk": (
-            "Підставляє категорії з {link}мапінгу{/link}; якщо мапінгу немає — "
-            "залишає категорію з файлу імпорту"
-        ),
-        "en": (
-            "Applies categories from the {link}mapping{/link}; if unmapped — "
-            "keeps the category from the import file"
-        ),
-    },
-    "index.hint_csv": {
-        "uk": "Відокремлює контрагента та опис операції {code}",
-        "en": "Separates the counterparty and the transaction description {code}",
-    },
-    # Preview
-    "preview.title": {
-        "uk": "Перегляд — BudgetBakers Import",
-        "en": "Preview — BudgetBakers Import",
-    },
-    "preview.eyebrow": {"uk": "Конвертація", "en": "Convert"},
-    "preview.h1": {
-        "uk": "Попередній перегляд конвертації",
-        "en": "Conversion preview",
-    },
-    "preview.lead": {
-        "uk": "Зніміть позначку з рядків, які не потрібно включати в CSV або імпорт у BudgetBakers.",
-        "en": "Uncheck rows you do not want in the CSV or BudgetBakers import.",
-    },
-    "preview.stat_rows": {"uk": "Рядків після фільтрації", "en": "Rows after filtering"},
-    "preview.stat_sum": {"uk": "Сума UAH", "en": "Total UAH"},
-    "preview.stat_account": {"uk": "Рахунок", "en": "Account"},
-    "preview.stat_file": {"uk": "Файл", "en": "File"},
-    "preview.import": {"uk": "Імпортувати", "en": "Import"},
-    "preview.download_csv": {"uk": "Завантажити CSV", "en": "Download CSV"},
-    "preview.back": {"uk": "← Назад до завантаження", "en": "← Back to upload"},
-    "preview.selected_counter": {
-        "uk": "Обрано: {n} з {total}",
-        "en": "Selected: {n} of {total}",
-    },
-    "preview.filter_all": {"uk": "Усі", "en": "All"},
-    "preview.filter_unmapped": {"uk": "Без мапінгу", "en": "Unmapped"},
-    "preview.filter_fx": {"uk": "FX", "en": "FX"},
-    "preview.filter_hint": {
-        "uk": "Фільтр лише ховає рядки; позначки прихованих рядків лишаються для імпорту/CSV.",
-        "en": "Filters only hide rows; checked state of hidden rows is kept for import/CSV.",
-    },
-    "preview.tag_duplicate": {"uk": "вже імпортовано", "en": "already imported"},
-    "preview.duplicates_banner": {
-        "uk": "Знайдено {n} можливих дублікатів (позначка знята за замовчуванням).",
-        "en": "Found {n} possible duplicates (unchecked by default).",
-    },
-    "preview.dedup_api_warn": {
-        "uk": "Не вдалося перевірити дублікати через Wallet API — використано лише локальну історію.",
-        "en": "Could not check duplicates via Wallet API — using local history only.",
-    },
-    "preview.export_file": {"uk": "Файл експорту:", "en": "Export file:"},
-    "preview.import_stats": {
-        "uk": (
-            "Успішно: {succeeded} · помилок: {failed} · пропущено (сума 0): {skipped_zero} "
-            "· не надіслано: {not_sent}"
-        ),
-        "en": (
-            "Succeeded: {succeeded} · failed: {failed} · skipped (amount 0): {skipped_zero} "
-            "· not sent: {not_sent}"
-        ),
-    },
-    "preview.import_aborted_suffix": {"uk": " · імпорт перервано", "en": " · import aborted"},
-    "preview.record_errors": {"uk": "Помилки записів:", "en": "Record errors:"},
-    "preview.row_n": {"uk": "Рядок {n}", "en": "Row {n}"},
-    "preview.and_more": {"uk": "…і ще {n}", "en": "…and {n} more"},
-    "preview.unmapped": {
-        "uk": "Категорії без мапінгу (залишено оригінальні назви):",
-        "en": "Unmapped categories (original names kept):",
-    },
-    "preview.warnings": {"uk": "Попередження ({n})", "en": "Warnings ({n})"},
-    "preview.meta_line": {
-        "uk": "Пропущено: {skipped} · FX-конверсій: {fx} · помилок курсу: {fx_failures}",
-        "en": "Skipped: {skipped} · FX conversions: {fx} · rate errors: {fx_failures}",
-    },
-    "preview.total_rows": {"uk": "Усього рядків: {n}.", "en": "Total rows: {n}."},
-    "preview.col_date": {"uk": "Дата", "en": "Date"},
-    "preview.col_counterparty": {"uk": "Контрагент", "en": "Counterparty"},
-    "preview.col_note": {"uk": "Опис", "en": "Description"},
-    "preview.col_category": {"uk": "Категорія", "en": "Category"},
-    "preview.col_amount_uah": {"uk": "Сума (UAH)", "en": "Amount (UAH)"},
-    "preview.col_currency": {"uk": "Валюта", "en": "Currency"},
-    "preview.col_amount_orig": {"uk": "Сума (ориг.)", "en": "Amount (orig.)"},
-    "preview.col_account": {"uk": "Рахунок", "en": "Account"},
-    "preview.select_all_title": {
-        "uk": "Вибрати всі / зняти всі",
-        "en": "Select all / clear all",
-    },
-    "preview.select_all_aria": {
-        "uk": "Вибрати всі або зняти всі",
-        "en": "Select all or clear all",
-    },
-    "preview.include_row_aria": {
-        "uk": "Включити рядок {n}",
-        "en": "Include row {n}",
-    },
-    "preview.tag_unmapped": {"uk": "без мапінгу", "en": "unmapped"},
-    "preview.category_keep": {
-        "uk": "— залишити як є —",
-        "en": "— keep as is —",
-    },
-    "preview.js_pick_one": {
-        "uk": "Оберіть хоча б одну операцію.",
-        "en": "Select at least one transaction.",
-    },
-    "preview.js_category_error": {
-        "uk": "Не вдалося оновити категорію.",
-        "en": "Could not update category.",
-    },
-    "preview.modal_title": {"uk": "Підтвердження імпорту", "en": "Confirm import"},
-    "preview.modal_selected": {"uk": "Обрано операцій", "en": "Selected transactions"},
-    "preview.modal_expense": {"uk": "Витрати (UAH)", "en": "Expenses (UAH)"},
-    "preview.modal_income": {"uk": "Надходження (UAH)", "en": "Income (UAH)"},
-    "preview.modal_unmapped": {
-        "uk": "Без мапінгу серед обраних",
-        "en": "Unmapped among selected",
-    },
-    "preview.modal_duplicates": {
-        "uk": "Дублікати серед обраних",
-        "en": "Duplicates among selected",
-    },
-    "preview.modal_account": {"uk": "Рахунок", "en": "Account"},
-    "preview.modal_confirm": {"uk": "Підтвердити імпорт", "en": "Confirm import"},
-    "preview.modal_cancel": {"uk": "Скасувати", "en": "Cancel"},
-    # History
-    "history.title": {"uk": "Історія — BudgetBakers Import", "en": "History — BudgetBakers Import"},
-    "history.eyebrow": {"uk": "Імпорт", "en": "Import"},
-    "history.h1": {"uk": "Історія імпортів", "en": "Import history"},
-    "history.lead": {
-        "uk": "Останні успішні імпорти в BudgetBakers (до 100 записів).",
-        "en": "Recent successful imports into BudgetBakers (up to 100 entries).",
-    },
-    "history.empty": {
-        "uk": "Ще немає імпортів. Після успішного імпорту з попереднього перегляду записи з’являться тут.",
-        "en": "No imports yet. After a successful import from the preview, entries will appear here.",
-    },
-    "history.col_date": {"uk": "Дата", "en": "Date"},
-    "history.col_file": {"uk": "Файл", "en": "File"},
-    "history.col_account": {"uk": "Рахунок", "en": "Account"},
-    "history.col_requested": {"uk": "Запитано", "en": "Requested"},
-    "history.col_succeeded": {"uk": "Успішно", "en": "Succeeded"},
-    "history.col_failed": {"uk": "Помилок", "en": "Failed"},
-    "history.back": {"uk": "← До конвертації", "en": "← Back to convert"},
-    # Accounts
-    "accounts.title": {"uk": "Рахунки — BudgetBakers Import", "en": "Accounts — BudgetBakers Import"},
-    "accounts.eyebrow": {"uk": "Налаштування", "en": "Settings"},
-    "accounts.h1": {"uk": "Довідник рахунків", "en": "Accounts directory"},
-    "accounts.lead": {
-        "uk": (
-            "Рахунки BudgetBakers для колонки {code} у CSV. "
-            "Можна підтягнути через API або додати назву вручну. Зберігається в {file}."
-        ),
-        "en": (
-            "BudgetBakers accounts for the {code} CSV column. "
-            "Load via API or add a name manually. Stored in {file}."
-        ),
-    },
-    "accounts.refresh": {
-        "uk": "Оновити з BudgetBakers API",
-        "en": "Refresh from BudgetBakers API",
-    },
-    "accounts.token_hint": {
-        "uk": "Спочатку задайте BUDGETBAKERS_API_TOKEN",
-        "en": "Set BUDGETBAKERS_API_TOKEN first",
-    },
-    "accounts.back": {"uk": "← До конвертації", "en": "← Back to convert"},
-    "accounts.no_token": {
-        "uk": (
-            "Токен API не задано ({code}). Можна додати назви рахунків вручну нижче."
-        ),
-        "en": (
-            "API token is not set ({code}). You can still add account names manually below."
-        ),
-    },
-    "accounts.add_label": {"uk": "Додати рахунок вручну", "en": "Add account manually"},
-    "accounts.add": {"uk": "Додати", "en": "Add"},
-    "accounts.empty": {
-        "uk": (
-            "Довідник порожній. Оновіть з API або додайте рахунок вручну — "
-            "інакше конвертація недоступна."
-        ),
-        "en": (
-            "Directory is empty. Refresh from API or add an account manually — "
-            "otherwise conversion is unavailable."
-        ),
-    },
-    "accounts.col_name": {"uk": "Назва", "en": "Name"},
-    "accounts.col_source": {"uk": "Джерело", "en": "Source"},
-    "accounts.col_id": {"uk": "ID", "en": "ID"},
-    "accounts.col_primary": {"uk": "Основний", "en": "Primary"},
-    "accounts.source_api": {"uk": "API", "en": "API"},
-    "accounts.source_manual": {"uk": "вручну", "en": "manual"},
-    "accounts.primary_title": {"uk": "Основний", "en": "Primary"},
-    "accounts.primary_aria": {
-        "uk": "Основний рахунок {name}",
-        "en": "Primary account {name}",
-    },
-    "accounts.delete": {"uk": "Видалити", "en": "Delete"},
-    # Categories
-    "categories.title": {
-        "uk": "Категорії — BudgetBakers Import",
-        "en": "Categories — BudgetBakers Import",
-    },
-    "categories.eyebrow": {"uk": "Налаштування", "en": "Settings"},
-    "categories.h1": {"uk": "Мапінг категорій", "en": "Category mapping"},
-    "categories.lead": {
-        "uk": (
-            "Банківські категорії з останніх завантажень зіставляються з назвами категорій BudgetBakers. "
-            "У списку групи = батьківські категорії у Wallet (наприклад Food & Drinks → Groceries). "
-            "Мапінг зберігає лише назву категорії (лист) у {file} — так очікує CSV BudgetBakers. "
-            "Якщо довідник порожній або для категорії немає відповідника — "
-            "у CSV потрапляє назва з файлу імпорту як є."
-        ),
-        "en": (
-            "Bank categories from recent uploads are matched to BudgetBakers category names. "
-            "Groups in the list are parent categories in Wallet (e.g. Food & Drinks → Groceries). "
-            "The mapping stores only the leaf category name in {file} — as BudgetBakers CSV expects. "
-            "If the directory is empty or a category has no match — "
-            "the import file name is written to CSV as-is."
-        ),
-    },
-    "categories.refresh": {
-        "uk": "Оновити з BudgetBakers API",
-        "en": "Refresh from BudgetBakers API",
-    },
-    "categories.back": {"uk": "← До конвертації", "en": "← Back to convert"},
-    "categories.no_token": {
-        "uk": (
-            "Токен API не задано ({code}). Можна вводити назви категорій вручну в полі нижче."
-        ),
-        "en": (
-            "API token is not set ({code}). You can type category names manually in the field below."
-        ),
-    },
-    "categories.empty": {
-        "uk": "Ще немає банківських категорій. Спочатку {link}завантажте Excel{/link} — список з’явиться тут.",
-        "en": "No bank categories yet. First {link}upload an Excel file{/link} — the list will appear here.",
-    },
-    "categories.col_bank": {"uk": "Категорія з виписки", "en": "Statement category"},
-    "categories.col_bb": {"uk": "Категорія BudgetBakers", "en": "BudgetBakers category"},
-    "categories.keep_file": {
-        "uk": "— залишити як у файлі імпорту —",
-        "en": "— keep as in import file —",
-    },
-    "categories.current": {"uk": "Поточне: {name}", "en": "Current: {name}"},
-    "categories.placeholder": {
-        "uk": "Порожньо = як у файлі імпорту",
-        "en": "Empty = as in import file",
-    },
-    "categories.save": {"uk": "Зберегти мапінг", "en": "Save mapping"},
-    # Route / flash messages
-    "err.add_account_first": {
-        "uk": "Спочатку додайте рахунок у довідник (Рахунки).",
-        "en": "Add an account to the directory first (Accounts).",
-    },
-    "err.pick_account": {
-        "uk": "Оберіть рахунок зі списку довідника.",
-        "en": "Choose an account from the directory list.",
-    },
-    "err.need_xlsx": {
-        "uk": "Потрібен файл Excel (.xlsx).",
-        "en": "An Excel file (.xlsx) is required.",
-    },
-    "err.empty_file": {"uk": "Файл порожній.", "en": "The file is empty."},
-    "err.excel_read": {
-        "uk": "Помилка читання Excel: {exc}",
-        "en": "Excel read error: {exc}",
-    },
-    "err.job_not_found": {
-        "uk": (
-            "Завдання не знайдено або вже протерміноване. "
-            "{link}Завантажте файл знову{/link}."
-        ),
-        "en": (
-            "Job not found or expired. "
-            "{link}Upload the file again{/link}."
-        ),
-    },
-    "err.pick_rows_csv": {
-        "uk": "Оберіть хоча б одну операцію для завантаження CSV.",
-        "en": "Select at least one transaction to download CSV.",
-    },
-    "err.already_imported": {
-        "uk": "Це завдання вже імпортовано.",
-        "en": "This job has already been imported.",
-    },
-    "err.no_rows_import": {
-        "uk": "Немає рядків для імпорту.",
-        "en": "No rows to import.",
-    },
-    "err.pick_rows_import": {
-        "uk": "Оберіть хоча б одну операцію для імпорту.",
-        "en": "Select at least one transaction to import.",
-    },
-    "err.need_token": {
-        "uk": "Спочатку задайте BUDGETBAKERS_API_TOKEN.",
-        "en": "Set BUDGETBAKERS_API_TOKEN first.",
-    },
-    "err.need_account_id": {
-        "uk": "У рахунку немає ID BudgetBakers. Оновіть довідник з API.",
-        "en": "Account has no BudgetBakers ID. Refresh the directory from the API.",
-    },
-    "err.import_failed": {
-        "uk": "Помилка імпорту: {exc}",
-        "en": "Import error: {exc}",
-    },
-    "ok.imported": {
-        "uk": "Імпортовано {succeeded} з {total}",
-        "en": "Imported {succeeded} of {total}",
-    },
-    "err.import_aborted": {"uk": "Імпорт перервано.", "en": "Import aborted."},
-    "ok.categories_loaded": {
-        "uk": "Завантажено {n} категорій BudgetBakers.",
-        "en": "Loaded {n} BudgetBakers categories.",
-    },
-    "ok.mapping_saved": {"uk": "Мапінг збережено.", "en": "Mapping saved."},
-    "ok.accounts_refreshed": {
-        "uk": "Оновлено з API: {n} рахунків (ручні записи збережено).",
-        "en": "Updated from API: {n} accounts (manual entries kept).",
-    },
-    "ok.account_added": {
-        "uk": "Додано рахунок «{name}».",
-        "en": "Added account “{name}”.",
-    },
-    "ok.account_deleted": {
-        "uk": "Видалено «{name}».",
-        "en": "Deleted “{name}”.",
-    },
-    "err.account_empty_name": {
-        "uk": "Назва рахунку порожня.",
-        "en": "Account name is empty.",
-    },
-    "err.row_not_found": {
-        "uk": "Рядок не знайдено.",
-        "en": "Row not found.",
-    },
-}
+_LOCALES_DIR = Path(__file__).resolve().parent / "locales"
+
+
+@lru_cache
+def _locale_table(lang: str) -> dict[str, str]:
+    path = _LOCALES_DIR / f"{lang}.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
 
 
 def normalize_lang(code: str | None) -> str:
@@ -431,10 +52,10 @@ def get_lang(request: Request) -> str:
 
 
 def translate(lang: str, key: str, **kwargs: Any) -> str:
-    entry = TRANSLATIONS.get(key)
-    if not entry:
-        return key
-    text = entry.get(lang) or entry.get(DEFAULT_LANG) or key
+    lang = normalize_lang(lang)
+    table = _locale_table(lang)
+    fallback = _locale_table(DEFAULT_LANG)
+    text = table.get(key) or fallback.get(key) or key
     if not kwargs:
         return text
 
@@ -446,12 +67,19 @@ def translate(lang: str, key: str, **kwargs: Any) -> str:
     try:
         return text.format_map(mapping)
     except ValueError:
-        # Malformed braces in the template (or rare edge cases): substitute
-        # known placeholders literally so alerts never show raw "{name}".
         result = text
         for k, v in kwargs.items():
             result = result.replace("{" + k + "}", str(v))
         return result
+
+
+def render_message(lang: str, message: ErrorMessage) -> str:
+    params = dict(message.params)
+    reason = params.get("reason")
+    if isinstance(reason, str):
+        nested = {k: v for k, v in params.items() if k != "reason"}
+        params["reason"] = translate(lang, reason, **nested)
+    return translate(lang, message.code, **params)
 
 
 def t_for(request: Request):
@@ -502,10 +130,8 @@ def safe_redirect_url(request: Request, fallback: str = "/") -> str:
     if not referer:
         return fallback
     parsed = urlparse(referer)
-    # Relative path only
     if not parsed.scheme and not parsed.netloc and parsed.path.startswith("/"):
         return _get_safe_redirect_path(parsed.path, parsed.query)
-    # Same host as current request
     host = request.headers.get("host", "")
     if parsed.netloc and host and parsed.netloc.lower() == host.lower():
         return _get_safe_redirect_path(parsed.path or "/", parsed.query)

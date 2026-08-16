@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 
-import pandas as pd
+from openpyxl import load_workbook
 
+from app.errors import AppError, ErrorMessage
 from app.services.counterparty import extract_counterparty
 
 # Some bank exports use Latin "C" instead of Cyrillic "С" in "Статус" / "Cтатус".
@@ -34,6 +35,9 @@ CURRENCY_ALIASES: dict[str, str] = {
     "€": "EUR",
 }
 
+# Excel serial date epoch (Windows 1900 date system).
+_EXCEL_EPOCH = datetime(1899, 12, 30)
+
 
 @dataclass
 class ParsedRow:
@@ -53,15 +57,13 @@ class ParseResult:
     rows: list[ParsedRow] = field(default_factory=list)
     skipped: int = 0
     bank_categories: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[ErrorMessage] = field(default_factory=list)
 
 
 def _norm_header(value: Any) -> str:
     if value is None:
         return ""
-    text = str(value).replace("\xa0", " ").strip().lower()
-    # Normalize lookalike Latin C/c before Cyrillic letters in "статус"
-    return text
+    return str(value).replace("\xa0", " ").strip().lower()
 
 
 def _find_columns(headers: list[Any]) -> dict[str, int]:
@@ -77,10 +79,10 @@ def _find_columns(headers: list[Any]) -> dict[str, int]:
     required = ("date", "note", "category", "amount", "currency")
     missing = [k for k in required if k not in found]
     if missing:
-        raise ValueError(
-            "Не знайдено обов'язкові колонки: "
-            + ", ".join(missing)
-            + f". Заголовки файлу: {headers}"
+        raise AppError(
+            "parse.missing_columns",
+            missing=", ".join(missing),
+            headers=headers,
         )
     return found
 
@@ -90,28 +92,28 @@ def _parse_date(value: Any) -> date:
         return value.date()
     if isinstance(value, date):
         return value
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        raise ValueError("порожня дата")
+    if _is_blank(value):
+        raise AppError("parse.empty_date")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return (_EXCEL_EPOCH + timedelta(days=float(value))).date()
+        except (OverflowError, ValueError) as exc:
+            raise AppError("parse.bad_date", value=repr(value)) from exc
     text = str(value).strip()
     for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(text[:10], fmt).date()
         except ValueError:
             continue
-    # Excel serial date
-    try:
-        parsed = pd.to_datetime(value, dayfirst=True)
-        return parsed.date()
-    except Exception as exc:  # noqa: BLE001
-        raise ValueError(f"невідомий формат дати: {value!r}") from exc
+    raise AppError("parse.bad_date", value=repr(value))
 
 
 def _parse_amount(value: Any) -> Decimal:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        raise ValueError("порожня сума")
+    if _is_blank(value):
+        raise AppError("parse.empty_amount")
     if isinstance(value, Decimal):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
         return Decimal(str(value))
     text = (
         str(value)
@@ -123,20 +125,33 @@ def _parse_amount(value: Any) -> Decimal:
     try:
         return Decimal(text)
     except InvalidOperation as exc:
-        raise ValueError(f"невідома сума: {value!r}") from exc
+        raise AppError("parse.bad_amount", value=repr(value)) from exc
 
 
 def normalize_currency(value: Any) -> str:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if _is_blank(value):
         return "UAH"
     raw = str(value).strip()
     key = raw.lower()
     return CURRENCY_ALIASES.get(key, CURRENCY_ALIASES.get(raw, raw.upper()))
 
 
+def _is_blank(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not str(value).strip():
+        return True
+    return False
+
+
+def _cell_str(value: Any) -> str:
+    if _is_blank(value):
+        return ""
+    return str(value).strip()
+
+
 def _is_completed(status: Any) -> bool:
-    if status is None or (isinstance(status, float) and pd.isna(status)):
-        # No status column / empty → keep row
+    if _is_blank(status):
         return True
     text = str(status).strip().splitlines()[0].strip().lower()
     return text == COMPLETED_STATUS
@@ -145,67 +160,83 @@ def _is_completed(status: Any) -> bool:
 def parse_excel(content: bytes) -> ParseResult:
     """Parse bank Excel export (BudgetBakers-compatible column layout) into rows."""
     bio = BytesIO(content)
-    # Prefer openpyxl via pandas; engine auto for xlsx
-    df = pd.read_excel(bio, dtype=object, engine="openpyxl")
-    if df.empty:
-        return ParseResult(warnings=["Файл порожній."])
+    wb = load_workbook(bio, read_only=True, data_only=True)
+    try:
+        ws = wb.active
+        if ws is None:
+            return ParseResult(warnings=[ErrorMessage("parse.empty_file")])
 
-    columns = list(df.columns)
-    colmap = _find_columns(columns)
-    result = ParseResult()
-    categories: set[str] = set()
+        rows_iter = ws.iter_rows(values_only=True)
+        header_row = next(rows_iter, None)
+        if header_row is None:
+            return ParseResult(warnings=[ErrorMessage("parse.empty_file")])
 
-    for idx, series in df.iterrows():
-        source_row = int(idx) + 2  # header is row 1
-        status_val = series.iloc[colmap["status"]] if "status" in colmap else None
-        if not _is_completed(status_val):
-            result.skipped += 1
-            continue
-        try:
-            op_date = _parse_date(series.iloc[colmap["date"]])
-            amount = _parse_amount(series.iloc[colmap["amount"]])
-            currency = normalize_currency(series.iloc[colmap["currency"]])
-            note = series.iloc[colmap["note"]]
-            category = series.iloc[colmap["category"]]
-            card = series.iloc[colmap["card"]] if "card" in colmap else ""
-            note_s = "" if note is None or (isinstance(note, float) and pd.isna(note)) else str(note).strip()
-            cat_s = (
-                ""
-                if category is None or (isinstance(category, float) and pd.isna(category))
-                else str(category).strip()
-            )
-            card_s = (
-                ""
-                if card is None or (isinstance(card, float) and pd.isna(card))
-                else str(card).strip()
-            )
-            status_s = (
-                ""
-                if status_val is None or (isinstance(status_val, float) and pd.isna(status_val))
-                else str(status_val).strip().splitlines()[0].strip()
-            )
-        except ValueError as exc:
-            result.warnings.append(f"Рядок {source_row}: пропущено ({exc})")
-            result.skipped += 1
-            continue
+        columns = list(header_row)
+        if all(_is_blank(c) for c in columns):
+            return ParseResult(warnings=[ErrorMessage("parse.empty_file")])
 
-        if cat_s:
-            categories.add(cat_s)
-        result.rows.append(
-            ParsedRow(
-                date=op_date,
-                note=note_s,
-                card=card_s,
-                bank_category=cat_s,
-                amount=amount,
-                currency=currency,
-                status=status_s,
-                source_row=source_row,
-                counter_party=extract_counterparty(note_s),
-            )
-        )
+        colmap = _find_columns(columns)
+        result = ParseResult()
+        categories: set[str] = set()
+        has_data = False
 
-    result.bank_categories = sorted(categories)
-    if not result.rows:
-        result.warnings.append("Немає рядків зі статусом «Виконано».")
-    return result
+        for idx, values in enumerate(rows_iter):
+            has_data = True
+            source_row = idx + 2  # header is row 1
+            cells = list(values)
+            status_val = cells[colmap["status"]] if "status" in colmap and colmap["status"] < len(cells) else None
+            if not _is_completed(status_val):
+                result.skipped += 1
+                continue
+            try:
+                op_date = _parse_date(_at(cells, colmap["date"]))
+                amount = _parse_amount(_at(cells, colmap["amount"]))
+                currency = normalize_currency(_at(cells, colmap["currency"]))
+                note_s = _cell_str(_at(cells, colmap["note"]))
+                cat_s = _cell_str(_at(cells, colmap["category"]))
+                card_s = _cell_str(_at(cells, colmap["card"])) if "card" in colmap else ""
+                status_s = (
+                    str(status_val).strip().splitlines()[0].strip()
+                    if not _is_blank(status_val)
+                    else ""
+                )
+            except AppError as exc:
+                result.warnings.append(
+                    ErrorMessage(
+                        "parse.row_skipped",
+                        {"source_row": source_row, "reason": exc.code, **exc.params},
+                    )
+                )
+                result.skipped += 1
+                continue
+
+            if cat_s:
+                categories.add(cat_s)
+            result.rows.append(
+                ParsedRow(
+                    date=op_date,
+                    note=note_s,
+                    card=card_s,
+                    bank_category=cat_s,
+                    amount=amount,
+                    currency=currency,
+                    status=status_s,
+                    source_row=source_row,
+                    counter_party=extract_counterparty(note_s),
+                )
+            )
+
+        result.bank_categories = sorted(categories)
+        if not has_data and not result.rows:
+            result.warnings.append(ErrorMessage("parse.empty_file"))
+        elif not result.rows:
+            result.warnings.append(ErrorMessage("parse.no_completed_rows"))
+        return result
+    finally:
+        wb.close()
+
+
+def _at(cells: list[Any], index: int) -> Any:
+    if index < 0 or index >= len(cells):
+        return None
+    return cells[index]

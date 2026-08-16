@@ -7,6 +7,13 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import httpx
 
+from app.clients.budgetbakers import (
+    BudgetBakersClient,
+    extract_items,
+    http_error_text,
+    response_json,
+)
+from app.errors import AppError
 from app.services.counterparty import COUNTERPARTY_MAX_LEN
 from app.services.csv_export import ExportRow
 
@@ -74,15 +81,11 @@ class BudgetBakersRecordsClient:
         client: httpx.Client | None = None,
         batch_size: int = RECORDS_BATCH_SIZE,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.token = token.strip()
+        self._http = BudgetBakersClient(base_url=base_url, token=token, client=client)
         self.batch_size = min(max(int(batch_size), 1), RECORDS_BATCH_SIZE)
-        self._client = client or httpx.Client(timeout=30.0)
-        self._owns_client = client is None
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self._http.close()
 
     def __enter__(self) -> BudgetBakersRecordsClient:
         return self
@@ -92,7 +95,7 @@ class BudgetBakersRecordsClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.token)
+        return self._http.configured
 
     def list_records(
         self,
@@ -106,48 +109,19 @@ class BudgetBakersRecordsClient:
 
         Uses ``recordDate=gte.`` / ``lte.`` and ``accountId`` filters.
         """
-        if not self.token:
-            raise RuntimeError(
-                "BUDGETBAKERS_API_TOKEN не задано. "
-                "Додайте токен у .env щоб завантажити записи."
-            )
         account = str(account_id or "").strip()
         if not account:
-            raise ValueError("accountId порожній.")
-
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Accept": "application/json",
-        }
-        url = f"{self.base_url}/records"
+            raise AppError("wallet.empty_account")
         limit = min(max(int(page_size), 1), 200)
-        start = date_from.isoformat()
-        end = date_to.isoformat()
-        results: list[dict[str, Any]] = []
-        offset = 0
-
-        while True:
-            params: dict[str, Any] = {
-                "limit": limit,
-                "offset": offset,
+        return self._http.paginate_get(
+            "/records",
+            params={
                 "accountId": account,
-                "recordDate": [f"gte.{start}", f"lte.{end}"],
-            }
-            resp = self._client.get(url, headers=headers, params=params)
-            if resp.status_code in (401, 403, 404, 429):
-                raise RuntimeError(_auth_or_limit_message(resp))
-            if resp.status_code >= 400:
-                raise RuntimeError(_http_error_message(resp))
-            payload = _response_json(resp)
-            items = _result_items(payload)
-            if not items:
-                break
-            results.extend(items)
-            if len(items) < limit:
-                break
-            offset += len(items)
-
-        return results
+                "recordDate": [f"gte.{date_from.isoformat()}", f"lte.{date_to.isoformat()}"],
+            },
+            page_size=limit,
+            resource="/records",
+        )
 
     def import_rows(
         self,
@@ -163,14 +137,10 @@ class BudgetBakersRecordsClient:
         built from ``category_cache`` (items from ``bb_categories_cache.json``).
         Unknown / empty category names omit ``categoryId``.
         """
-        if not self.token:
-            raise RuntimeError(
-                "BUDGETBAKERS_API_TOKEN не задано. "
-                "Додайте токен у .env щоб імпортувати записи."
-            )
+        self._http.require_token()
         account = str(account_id or "").strip()
         if not account:
-            raise ValueError("accountId порожній.")
+            raise AppError("wallet.empty_account")
 
         if category_ids is not None:
             id_map = {
@@ -203,44 +173,39 @@ class BudgetBakersRecordsClient:
         if not prepared:
             return result
 
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Accept": "application/json",
-        }
-        url = f"{self.base_url}/records"
-
         for offset in range(0, len(prepared), self.batch_size):
             batch = prepared[offset : offset + self.batch_size]
             try:
-                resp = self._client.post(
-                    url,
-                    headers=headers,
+                resp = self._http.request(
+                    "POST",
+                    "/records",
                     json=[item.payload for item in batch],
                 )
-            except httpx.HTTPError as exc:
-                _fail_batch(result, batch, f"Помилка мережі: {exc}", error_type="network")
-                result.fatal_error = str(exc)
+            except AppError as exc:
+                _fail_batch(result, batch, exc.code, error_type="network")
+                result.fatal_error = exc.code
                 result.aborted = True
                 result.not_sent = len(prepared) - offset - len(batch)
                 return result
 
             if resp.status_code in (401, 403, 404, 429):
-                message = _auth_or_limit_message(resp)
-                _fail_batch(result, batch, message, error_type="http")
-                result.fatal_error = message
+                code = _auth_or_limit_code(resp.status_code)
+                _fail_batch(result, batch, code, error_type="http")
+                result.fatal_error = code
                 result.aborted = True
                 result.not_sent = len(prepared) - offset - len(batch)
                 return result
 
             if resp.status_code not in (200, 207):
-                message = _http_error_message(resp)
+                text = http_error_text(resp) or f"unexpected response ({resp.status_code})"
+                message = f"wallet.http_error|{resp.status_code}|{text}"
                 _fail_batch(result, batch, message, error_type="http")
-                result.fatal_error = message
+                result.fatal_error = "wallet.http_error"
                 result.aborted = True
                 result.not_sent = len(prepared) - offset - len(batch)
                 return result
 
-            payload = _response_json(resp)
+            payload = response_json(resp)
             succeeded_indices, errors = _parse_batch_results(
                 resp.status_code, payload, batch
             )
@@ -276,7 +241,11 @@ def build_record_payload(
     account_id: str,
     category_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Build one POST /records item, or None if the amount is zero at 2 dp."""
+    """Build one POST /records item, or None if the amount is zero at 2 dp.
+
+    Wallet JSON requires a numeric ``amount.value``. Domain code stays on
+    Decimal; the float is only created at this boundary via ``float(str(...))``.
+    """
     amount = _quantize_amount(row.amount)
     if amount == 0:
         return None
@@ -369,7 +338,7 @@ def _parse_batch_results(
                 row_index=prepared.row_index,
                 date=prepared.date,
                 note=prepared.note,
-                error="Немає результату для цього рядка в відповіді API.",
+                error="wallet.missing_item",
                 error_type="unknown",
             )
         )
@@ -378,14 +347,7 @@ def _parse_batch_results(
 
 
 def _result_items(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        return [x for x in payload if isinstance(x, dict)]
-    if isinstance(payload, dict):
-        for key in ("results", "data", "items", "records"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [x for x in value if isinstance(x, dict)]
-    return []
+    return extract_items(payload)
 
 
 def _result_index(item: dict[str, Any], position: int, batch_len: int) -> int:
@@ -419,7 +381,7 @@ def _item_error_message(item: dict[str, Any]) -> str:
         value = item.get(key)
         if value:
             return str(value)
-    return "Помилка створення запису."
+    return "wallet.item_error"
 
 
 def _item_error_type(item: dict[str, Any]) -> str | None:
@@ -429,38 +391,11 @@ def _item_error_type(item: dict[str, Any]) -> str | None:
     return None
 
 
-def _response_json(resp: httpx.Response) -> Any:
-    try:
-        return resp.json()
-    except ValueError:
-        return None
-
-
-def _http_error_message(resp: httpx.Response) -> str:
-    payload = _response_json(resp)
-    if isinstance(payload, dict):
-        text = payload.get("message") or payload.get("error") or payload.get("detail")
-        if isinstance(text, dict):
-            text = text.get("message") or text.get("error")
-        if text:
-            return f"BudgetBakers API ({resp.status_code}): {text}"
-    body = (resp.text or "").strip()
-    if body:
-        return f"BudgetBakers API ({resp.status_code}): {body[:300]}"
-    return f"BudgetBakers API: неочікувана відповідь ({resp.status_code})."
-
-
-def _auth_or_limit_message(resp: httpx.Response) -> str:
-    if resp.status_code == 401:
-        return "BudgetBakers API: невірний або протермінований токен (401)."
-    if resp.status_code == 403:
-        return "BudgetBakers API: доступ заборонено (403)."
-    if resp.status_code == 429:
-        return "BudgetBakers API: перевищено ліміт запитів (429)."
-    if resp.status_code == 404:
-        return (
-            "BudgetBakers API: 404 для /records. "
-            "Перевірте BUDGETBAKERS_API_BASE "
-            "(очікується https://rest.budgetbakers.com/wallet/v1/api)."
-        )
-    return _http_error_message(resp)
+def _auth_or_limit_code(status_code: int) -> str:
+    if status_code == 401:
+        return "wallet.unauthorized"
+    if status_code == 403:
+        return "wallet.forbidden"
+    if status_code == 429:
+        return "wallet.rate_limited"
+    return "wallet.not_found"

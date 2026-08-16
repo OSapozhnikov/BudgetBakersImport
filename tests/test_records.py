@@ -207,7 +207,7 @@ class ImportRowsTests(unittest.TestCase):
         self.assertEqual(result.not_sent, 1)
         self.assertIsNotNone(result.fatal_error)
         assert result.fatal_error is not None
-        self.assertIn("401", result.fatal_error)
+        self.assertEqual(result.fatal_error, "wallet.unauthorized")
 
     def test_resolves_category_from_cache(self) -> None:
         captured: list[dict] = []

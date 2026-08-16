@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     port: int = 8000
     log_level: str = "INFO"
-    web_concurrency: int = 1
+    web_concurrency: int = 1  # Jobs are in-memory; extra workers fork/lose preview state.
 
     default_account_name: str = "Account"
     data_dir: str = "./data"
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     nbu_fx_lookback_days: int = 7
     preview_row_limit: int = 50
+    max_upload_bytes: int = 15 * 1024 * 1024
 
 
 @lru_cache

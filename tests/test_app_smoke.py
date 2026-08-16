@@ -30,7 +30,9 @@ class AppSmokeTests(unittest.TestCase):
     def test_healthz(self) -> None:
         resp = self.client.get("/healthz")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), {"status": "ok"})
+        payload = resp.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["data_dir"], "ok")
 
     def test_lang_en_sets_cookie(self) -> None:
         resp = self.client.get("/lang/en", follow_redirects=False)

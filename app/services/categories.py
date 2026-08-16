@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
-logger = logging.getLogger(__name__)
+from app.clients.budgetbakers import BudgetBakersClient
 
 # Non-assignable system categories (Wallet hides these from normal expense mapping).
 EXCLUDED_CATEGORY_NAMES = frozenset(
@@ -36,18 +33,14 @@ class BudgetBakersCategoriesClient:
         *,
         base_url: str,
         token: str,
-        client: httpx.Client | None = None,
+        client: Any = None,
         page_size: int = 100,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.token = token.strip()
+        self._http = BudgetBakersClient(base_url=base_url, token=token, client=client)
         self.page_size = page_size
-        self._client = client or httpx.Client(timeout=30.0)
-        self._owns_client = client is None
 
     def close(self) -> None:
-        if self._owns_client:
-            self._client.close()
+        self._http.close()
 
     def __enter__(self) -> BudgetBakersCategoriesClient:
         return self
@@ -57,49 +50,19 @@ class BudgetBakersCategoriesClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.token)
+        return self._http.configured
 
     def list_categories(self) -> list[BudgetBakersCategory]:
-        if not self.token:
-            raise RuntimeError(
-                "BUDGETBAKERS_API_TOKEN не задано. "
-                "Додайте токен у .env щоб завантажити категорії."
-            )
-
-        headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json"}
+        items = self._http.paginate_get(
+            "/categories",
+            page_size=self.page_size,
+            resource="/categories",
+        )
         results: list[BudgetBakersCategory] = []
-        offset = 0
-
-        while True:
-            params = {"limit": self.page_size, "offset": offset}
-            url = f"{self.base_url}/categories"
-            resp = self._client.get(url, headers=headers, params=params)
-            if resp.status_code == 401:
-                raise RuntimeError("BudgetBakers API: невірний або протермінований токен (401).")
-            if resp.status_code == 404:
-                raise RuntimeError(
-                    "BudgetBakers API: 404 для /categories. "
-                    "Перевірте BUDGETBAKERS_API_BASE "
-                    "(очікується https://rest.budgetbakers.com/wallet/v1/api)."
-                )
-            resp.raise_for_status()
-            payload = resp.json()
-            items = _extract_items(payload)
-            if not items:
-                break
-            for item in items:
-                cat = _parse_category(item)
-                if cat:
-                    results.append(cat)
-            next_offset = payload.get("nextOffset") if isinstance(payload, dict) else None
-            if next_offset is None or next_offset == offset:
-                if len(items) < self.page_size:
-                    break
-                offset += self.page_size
-            else:
-                offset = int(next_offset)
-
-        # Deduplicate by id, then sort by group → category name (Wallet order)
+        for item in items:
+            cat = _parse_category(item)
+            if cat:
+                results.append(cat)
         by_id = {c.id: c for c in results}
         return sorted(
             by_id.values(),
@@ -175,20 +138,6 @@ def grouped_bb_categories(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         cats = sorted(buckets[group_name], key=lambda c: c["name"].casefold())
         result.append({"group_name": group_name, "items": cats})
     return result
-
-
-def _extract_items(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        return [x for x in payload if isinstance(x, dict)]
-    if isinstance(payload, dict):
-        for key in ("data", "items", "categories", "accounts", "results"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [x for x in value if isinstance(x, dict)]
-        # Single object wrapped
-        if "id" in payload and "name" in payload:
-            return [payload]
-    return []
 
 
 def _parse_category(item: dict[str, Any]) -> BudgetBakersCategory | None:

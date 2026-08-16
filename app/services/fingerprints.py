@@ -1,17 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
-import logging
 import re
 from decimal import ROUND_HALF_UP, Decimal
-from pathlib import Path
-from threading import Lock
-from typing import Iterable
 
+from app.persistence.fingerprints import FingerprintStore
 from app.services.csv_export import ExportRow
-
-logger = logging.getLogger(__name__)
 
 _WHITESPACE = re.compile(r"\s+")
 _TWO_PLACES = Decimal("0.01")
@@ -94,62 +88,3 @@ def fingerprint_from_api_item(item: dict, account_id: str) -> str | None:
     )
     return fingerprint_hash(raw)
 
-
-class FingerprintStore:
-    """Durable set of imported-row fingerprints ($DATA_DIR/import_fingerprints.json)."""
-
-    def __init__(self, data_dir: str | Path) -> None:
-        self.data_dir = Path(data_dir)
-        self.path = self.data_dir / "import_fingerprints.json"
-        self._lock = Lock()
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
-    def load(self) -> set[str]:
-        with self._lock:
-            return set(self._read_unlocked())
-
-    def contains(self, fp: str) -> bool:
-        return fp in self.load()
-
-    def add_many(self, fingerprints: Iterable[str]) -> int:
-        """Add fingerprints; returns how many were newly inserted."""
-        incoming = {str(x).strip() for x in fingerprints if str(x).strip()}
-        if not incoming:
-            return 0
-        with self._lock:
-            current = set(self._read_unlocked())
-            before = len(current)
-            current |= incoming
-            self._write_unlocked(sorted(current))
-            return len(current) - before
-
-    def _read_unlocked(self) -> list[str]:
-        if not self.path.exists():
-            return []
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Failed to read fingerprints: %s", exc)
-            return []
-        if isinstance(raw, dict):
-            items = raw.get("fingerprints") or raw.get("items") or []
-        elif isinstance(raw, list):
-            items = raw
-        else:
-            return []
-        result: list[str] = []
-        seen: set[str] = set()
-        for item in items:
-            fp = str(item).strip()
-            if not fp or fp in seen:
-                continue
-            seen.add(fp)
-            result.append(fp)
-        return result
-
-    def _write_unlocked(self, fingerprints: list[str]) -> None:
-        payload = {"fingerprints": fingerprints}
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )

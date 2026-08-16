@@ -7,9 +7,10 @@ from decimal import Decimal
 from io import StringIO
 from typing import Iterable
 
+from app.errors import ErrorMessage
 from app.services.excel_parser import ParsedRow
 from app.services.fx_nbu import FxConversion, NbuFxConverter
-from app.services.mapping_store import CategoryMappingStore
+from app.persistence.mapping_store import CategoryMappingStore
 
 # BudgetBakers-accepted CSV layout. First letter of "Cтатус" is Latin C (U+0043).
 CSV_COLUMNS = (
@@ -48,7 +49,7 @@ class ExportRow:
 @dataclass
 class ConversionResult:
     rows: list[ExportRow] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    warnings: list[ErrorMessage] = field(default_factory=list)
     converted_fx_count: int = 0
     fx_failures: int = 0
     unmapped_categories: list[str] = field(default_factory=list)
@@ -73,9 +74,9 @@ def convert_rows(
             unmapped.add(parsed.bank_category)
 
         if fx_conv.warning:
-            result.warnings.append(
-                f"Рядок {parsed.source_row} ({parsed.date.isoformat()}): {fx_conv.warning}"
-            )
+            params = dict(fx_conv.warning.params)
+            params["source_row"] = parsed.source_row
+            result.warnings.append(ErrorMessage(fx_conv.warning.code, params))
         if fx_conv.converted:
             result.converted_fx_count += 1
         elif fx_conv.original_currency != "UAH" and fx_conv.rate is None:

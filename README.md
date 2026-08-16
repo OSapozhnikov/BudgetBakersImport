@@ -56,7 +56,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 |---|---|---|
 | `PORT` | `8000` | Listen port |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `WEB_CONCURRENCY` | `1` | Uvicorn workers |
+| `WEB_CONCURRENCY` | `1` | Uvicorn workers. **Must stay 1** — jobs are in-memory and not shared across workers |
+| `MAX_UPLOAD_BYTES` | `15728640` | Max Excel upload size (15 MiB) |
 | `DEFAULT_ACCOUNT_NAME` | `Account` | Fallback preselected account when present in the directory |
 | `DATA_DIR` | `./data` | Durable data directory |
 | `BUDGETBAKERS_API_BASE` | `https://rest.budgetbakers.com/wallet/v1/api` | Wallet API base URL ([docs](https://rest.budgetbakers.com/wallet/reference)) |
@@ -75,6 +76,7 @@ Put secrets only in `.env` (gitignored), never in the image.
 | `prefs.json` | UI prefs (last used account name) |
 | `import_fingerprints.json` | Fingerprints of successfully imported rows (local dedup) |
 | `import_history.json` | Append-only API import history (capped) |
+| `nbu_fx_cache.json` | Cached NBU FX rates (date + currency) |
 
 ## CSV format
 
@@ -160,26 +162,25 @@ python -m unittest discover -s tests -v
 
 ## Project layout
 
+See [docs/architecture.md](docs/architecture.md) for layers, job lifecycle, and non-goals.
+
 ```
 app/
-  main.py
+  main.py                 # create_app wiring
   settings.py
+  errors.py
+  jobs.py
+  views.py
   i18n.py
-  services/
-    excel_parser.py
-    counterparty.py
-    fx_nbu.py
-    categories.py
-    accounts.py
-    accounts_store.py
-    mapping_store.py
-    prefs_store.py
-    fingerprints.py
-    import_history.py
-    records.py
-    csv_export.py
+  locales/                # uk.json, en.json
+  routers/
+  use_cases/
+  persistence/            # atomic JSON stores
+  clients/                # BudgetBakers HTTP adapter
+  services/               # domain (parse, FX, CSV, records)
   templates/
   static/
+docs/architecture.md
 tests/
 Dockerfile
 docker-compose.yml
