@@ -20,14 +20,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "nav.accounts": {"uk": "Рахунки", "en": "Accounts"},
     "nav.categories": {"uk": "Категорії", "en": "Categories"},
     "footer.stage": {
-        "uk": "Етап 2: Excel → CSV або імпорт у BudgetBakers через API.",
-        "en": "Stage 2: Excel → CSV or import into BudgetBakers via API.",
+        "uk": "OSapozhnikov. Version 1.0.0",
+        "en": "OSapozhnikov. Version 1.0.0",
     },
     "lang.switcher": {"uk": "Мова", "en": "Language"},
     # Index
     "index.title": {"uk": "Конвертація — BudgetBakers Import", "en": "Convert — BudgetBakers Import"},
     "index.eyebrow": {"uk": "Конвертація", "en": "Convert"},
-    "index.h1": {"uk": "Excel → CSV", "en": "Excel → CSV"},
+    "index.h1": {"uk": "Завантаження виписки", "en": "Upload statement"},
     "index.lead": {
         "uk": (
             "Завантажте банківську Excel-виписку (.xlsx). Суми в USD/EUR конвертуються в UAH "
@@ -42,7 +42,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "uk": "Довідник рахунків порожній. Спочатку {link}додайте або завантажте рахунки{/link}.",
         "en": "The accounts directory is empty. First {link}add or load accounts{/link}.",
     },
-    "index.file_label": {"uk": "Файл Excel", "en": "Excel file"},
+    "index.file_label": {"uk": "Файл", "en": "File"},
     "index.account_label": {"uk": "Рахунок BudgetBakers", "en": "BudgetBakers account"},
     "index.account_hint": {
         "uk": "Список з {link}довідника рахунків{/link}. Однакова назва для всіх рядків.",
@@ -50,14 +50,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
     "index.no_accounts_option": {"uk": "— немає рахунків —", "en": "— no accounts —"},
     "index.submit": {"uk": "Конвертувати та переглянути", "en": "Convert and preview"},
-    "index.hints_title": {"uk": "Що робить додаток", "en": "What the app does"},
+    "index.hints_title": {"uk": "Призначення додатку", "en": "About the app"},
     "index.hint_status": {
-        "uk": "Бере лише рядки зі статусом «Виконано»",
-        "en": "Keeps only rows with status “Completed”",
+        "uk": "Обробляє виписку банку та формує CSV або імпортує в BudgetBakers через API",
+        "en": "Processes the bank statement and exports CSV or imports into BudgetBakers via API",
     },
     "index.hint_fx": {
-        "uk": "Мапить ₴ / грн → UAH; інші валюти — через НБУ",
-        "en": "Maps ₴ / грн → UAH; other currencies via NBU",
+        "uk": "Конвертує валюту операції в UAH — через НБУ",
+        "en": "Converts the transaction currency to UAH — via NBU",
     },
     "index.hint_mapping": {
         "uk": (
@@ -70,8 +70,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         ),
     },
     "index.hint_csv": {
-        "uk": "Віддає CSV з BOM, роздільник {code}",
-        "en": "Exports CSV with BOM, delimiter {code}",
+        "uk": "Відокремлює контрагента та опис операції {code}",
+        "en": "Separates the counterparty and the transaction description {code}",
     },
     # Preview
     "preview.title": {
