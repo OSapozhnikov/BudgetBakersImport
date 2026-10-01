@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
   <header class="top">
     <a class="brand" href="/">
       <span class="brand-mark">BB</span>
@@ -39,7 +39,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="foot">
-    <span>{{ t("footer.stage") }}</span>
+    <span>{{ t("footer.stage", version=app_version) }}</span>
   </footer>
 </body>
 </html>

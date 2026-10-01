@@ -23,6 +23,7 @@ from app.services.csv_export import ConversionResult, ExportRow, build_csv, buil
 from app.services.records import RecordImportResult, RecordItemError
 from app.settings import Settings
 from app.use_cases.convert import select_account
+from app.version import __version__
 
 IMPORT_ERROR_CAP = 20
 
@@ -33,7 +34,7 @@ def i18n_context(request: Request) -> dict[str, Any]:
     def t(key: str, **kwargs: Any) -> str:
         return translate(lang, key, **kwargs)
 
-    return {"lang": lang, "t": t}
+    return {"lang": lang, "t": t, "app_version": __version__}
 
 
 def format_int_display(value: int) -> str:

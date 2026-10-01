@@ -3,7 +3,7 @@
   "nav.accounts": "Accounts",
   "nav.categories": "Categories",
   "nav.history": "History",
-  "footer.stage": "OSapozhnikov. Version 1.0.0",
+  "footer.stage": "OSapozhnikov. Version {version}",
   "lang.switcher": "Language",
   "index.title": "Convert — BudgetBakers Import",
   "index.eyebrow": "Convert",

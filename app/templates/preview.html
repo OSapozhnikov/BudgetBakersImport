@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("preview.title") }}{% endblock %}
+{% block body_class %}page-preview{% endblock %}
 {% block content %}
 <section class="hero-block enter">
   <p class="eyebrow">{{ t("preview.eyebrow") }}</p>
@@ -120,6 +121,17 @@
 
   <div class="table-wrap enter">
     <table class="preview-table">
+      <colgroup>
+        <col class="c-check">
+        <col class="c-date">
+        <col class="c-party">
+        <col class="c-note">
+        <col class="c-cat">
+        <col class="c-amt">
+        <col class="c-cur">
+        <col class="c-orig">
+        <col class="c-acc">
+      </colgroup>
       <thead>
         <tr>
           <th class="col-check">
@@ -149,13 +161,13 @@
                    {% if not r.is_duplicate %}checked{% endif %}
                    aria-label="{{ t('preview.include_row_aria', n=loop.index) }}">
           </td>
-          <td class="num">
+          <td class="date-cell">
             {{ r.date.strftime('%d.%m.%Y') }}
             {% if r.is_duplicate %}<span class="tag tag-dup">{{ t("preview.tag_duplicate") }}</span>{% endif %}
           </td>
           <td class="counterparty">{{ r.counter_party }}</td>
           <td class="note">{{ r.note }}</td>
-          <td>
+          <td class="category-cell">
             {% if bb_groups %}
             <select class="category-select category-inline"
                     data-row-index="{{ loop.index0 }}"

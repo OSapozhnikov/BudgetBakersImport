@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.settings import Settings
+from app.version import __version__
 
 
 class AppSmokeTests(unittest.TestCase):
@@ -52,6 +53,8 @@ class AppSmokeTests(unittest.TestCase):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("text/html", resp.headers.get("content-type", ""))
+        self.assertIn(f"Version {__version__}", resp.text)
+        self.assertIn(f"/static/style.css?v={__version__}", resp.text)
 
     def test_accounts_primary_with_temp_data_dir(self) -> None:
         add = self.client.post(

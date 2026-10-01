@@ -132,6 +132,12 @@ nav a.nav-active {
   margin: 1.75rem auto 3rem;
 }
 
+body.page-preview .wrap,
+body.page-preview .foot {
+  width: calc(100% - 2rem);
+  max-width: none;
+}
+
 .foot {
   width: min(1100px, calc(100% - 2rem));
   margin: 0 auto 2rem;
@@ -377,8 +383,9 @@ form.inline { display: inline; margin: 0; }
 }
 
 select.category-inline {
-  min-width: 12rem;
-  max-width: 18rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   padding: 0.45rem 0.55rem;
   font-size: 0.88rem;
 }
@@ -593,7 +600,8 @@ select.category-inline {
 .stat.warn { border-color: var(--warn-border); background: var(--warn-bg); }
 
 .table-wrap {
-  overflow: auto;
+  overflow-x: auto;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
@@ -601,25 +609,43 @@ select.category-inline {
 }
 
 .preview-table {
-  min-width: 72rem;
+  width: 100%;
+  table-layout: fixed;
 }
 
-.note {
-  min-width: 16rem;
-  width: 22rem;
-  max-width: 32rem;
-  white-space: normal;
+.preview-table col.c-check { width: 3%; }
+.preview-table col.c-date { width: 11%; }
+.preview-table col.c-party { width: 12%; }
+.preview-table col.c-note { width: 16%; }
+.preview-table col.c-cat { width: 20%; }
+.preview-table col.c-amt { width: 9%; }
+.preview-table col.c-cur { width: 7%; }
+.preview-table col.c-orig { width: 12%; }
+.preview-table col.c-acc { width: 10%; }
+
+.preview-table th,
+.preview-table td {
+  padding: 0.75rem 0.6rem;
   overflow-wrap: break-word;
-  word-break: normal;
 }
 
+.note,
 .counterparty {
-  min-width: 8rem;
-  width: 10rem;
-  max-width: 14rem;
   white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
+}
+
+.date-cell {
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.preview-table select.category-inline {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .table-wrap.flat {
@@ -743,6 +769,5 @@ th.num { text-align: right; }
   .top { flex-direction: column; align-items: flex-start; }
   .top-end { width: 100%; justify-content: space-between; }
   .brand-text { font-size: 1rem; }
-  .note { max-width: 20rem; min-width: 12rem; }
   .stats { grid-template-columns: 1fr; }
 }

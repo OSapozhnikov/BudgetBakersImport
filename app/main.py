@@ -18,6 +18,7 @@ from app.persistence.prefs_store import PrefsStore
 from app.routers.convert import convert_router
 from app.routers.settings import settings_router
 from app.settings import Settings, get_settings
+from app.version import __version__
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -34,7 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     _configure_logging(settings.log_level)
 
-    app = FastAPI(title="BudgetBakers Excel → CSV", version="1.0.0")
+    app = FastAPI(title="BudgetBakers Excel → CSV", version=__version__)
     templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
