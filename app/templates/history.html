@@ -8,13 +8,14 @@
 </section>
 
 <div class="actions enter">
-  <a class="btn" href="/">{{ t("history.back") }}</a>
+  <sl-button href="/">{{ t("history.back") }}</sl-button>
 </div>
 
 {% if not entries %}
-<div class="alert enter">
+<sl-alert open class="enter flash-alert">
+  <sl-icon slot="icon" name="info-circle"></sl-icon>
   {{ t("history.empty") }}
-</div>
+</sl-alert>
 {% else %}
 <div class="table-wrap enter">
   <table>

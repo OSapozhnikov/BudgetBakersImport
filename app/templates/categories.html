@@ -11,23 +11,25 @@
 
 <div class="actions enter">
   <form action="/settings/categories/refresh" method="post">
-    <button type="submit" class="btn primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
+    <sl-button type="submit" variant="primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
       {{ t("categories.refresh") }}
-    </button>
+    </sl-button>
   </form>
-  <a class="btn" href="/">{{ t("categories.back") }}</a>
+  <sl-button href="/">{{ t("categories.back") }}</sl-button>
 </div>
 
 {% if not token_configured %}
-<div class="alert alert-warn enter">
+<sl-alert variant="warning" open class="enter flash-alert">
+  <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
   {{ t("categories.no_token", code="<code>BUDGETBAKERS_API_TOKEN</code>") | safe }}
-</div>
+</sl-alert>
 {% endif %}
 
 {% if not bank_categories %}
-<div class="alert enter">
+<sl-alert open class="enter flash-alert">
+  <sl-icon slot="icon" name="info-circle"></sl-icon>
   {{ t("categories.empty").replace("{link}", '<a href="/">').replace("{/link}", "</a>") | safe }}
-</div>
+</sl-alert>
 {% else %}
 <form action="/settings/categories/save" method="post" class="panel enter">
   <div class="table-wrap flat">
@@ -69,7 +71,7 @@
       </tbody>
     </table>
   </div>
-  <button type="submit" class="btn primary">{{ t("categories.save") }}</button>
+  <sl-button type="submit" variant="primary">{{ t("categories.save") }}</sl-button>
 </form>
 {% endif %}
 {% endblock %}

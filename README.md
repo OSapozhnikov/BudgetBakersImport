@@ -45,10 +45,13 @@ Before converting, open **Accounts** and either refresh from BudgetBakers API or
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+npm ci && npm run vendor:shoelace   # Shoelace UI into app/static/vendor/
 cp .env.example .env
 mkdir data
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Docker build runs the same `npm ci` + `vendor:shoelace` step; vendor files are not committed.
 
 ## Environment variables
 
@@ -179,7 +182,11 @@ app/
   clients/                # BudgetBakers HTTP adapter
   services/               # domain (parse, FX, CSV, records)
   templates/
-  static/
+  static/                 # style.css; Shoelace via npm run vendor:shoelace
+scripts/
+  vendor-shoelace.mjs
+package.json              # pinned @shoelace-style/shoelace
+package-lock.json
 docs/architecture.md
 tests/
 Dockerfile

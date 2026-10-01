@@ -1,3 +1,11 @@
+# --- Frontend assets (Shoelace) ---
+FROM node:22-bookworm-slim AS shoelace
+WORKDIR /src
+COPY package.json package-lock.json ./
+COPY scripts/vendor-shoelace.mjs ./scripts/vendor-shoelace.mjs
+RUN npm ci && npm run vendor:shoelace
+
+# --- App ---
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -15,6 +23,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
+COPY --from=shoelace /src/app/static/vendor/shoelace ./app/static/vendor/shoelace
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN mkdir -p /data \

@@ -7,7 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/vendor/shoelace/themes/light.css?v={{ app_version }}">
   <link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
+  <script type="module">
+    import { setBasePath } from "/static/vendor/shoelace/utilities/base-path.js";
+    setBasePath("/static/vendor/shoelace");
+  </script>
+  <script type="module" src="/static/vendor/shoelace/shoelace-autoloader.js"></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header class="top">
@@ -22,19 +28,24 @@
         <a href="/settings/categories" class="{% if active_nav == 'categories' %}nav-active{% endif %}">{{ t("nav.categories") }}</a>
         <a href="/settings/history" class="{% if active_nav == 'history' %}nav-active{% endif %}">{{ t("nav.history") }}</a>
       </nav>
-      <div class="lang-switch" role="navigation" aria-label="{{ t('lang.switcher') }}">
-        <a href="/lang/uk" class="{% if lang == 'uk' %}lang-active{% endif %}" hreflang="uk" lang="uk">UK</a>
-        <span class="lang-sep" aria-hidden="true">|</span>
-        <a href="/lang/en" class="{% if lang == 'en' %}lang-active{% endif %}" hreflang="en" lang="en">EN</a>
-      </div>
+      <sl-button-group class="lang-switch" label="{{ t('lang.switcher') }}">
+        <sl-button size="small" href="/lang/uk" hreflang="uk" lang="uk" variant="{% if lang == 'uk' %}primary{% else %}default{% endif %}">UK</sl-button>
+        <sl-button size="small" href="/lang/en" hreflang="en" lang="en" variant="{% if lang == 'en' %}primary{% else %}default{% endif %}">EN</sl-button>
+      </sl-button-group>
     </div>
   </header>
   <main class="wrap">
     {% if error %}
-    <div class="alert alert-error">{{ error }}</div>
+    <sl-alert variant="danger" open class="flash-alert">
+      <sl-icon slot="icon" name="exclamation-octagon"></sl-icon>
+      {{ error }}
+    </sl-alert>
     {% endif %}
     {% if success %}
-    <div class="alert alert-ok">{{ success }}</div>
+    <sl-alert variant="success" open class="flash-alert">
+      <sl-icon slot="icon" name="check2-circle"></sl-icon>
+      {{ success }}
+    </sl-alert>
     {% endif %}
     {% block content %}{% endblock %}
   </main>

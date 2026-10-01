@@ -1,0 +1,11 @@
+{
+  "name": "budgetbakers-import",
+  "private": true,
+  "description": "Frontend assets for BudgetBakers Import (Shoelace UI)",
+  "scripts": {
+    "vendor:shoelace": "node scripts/vendor-shoelace.mjs"
+  },
+  "dependencies": {
+    "@shoelace-style/shoelace": "2.20.1"
+  }
+}

@@ -8,9 +8,10 @@
 </section>
 
 {% if not accounts %}
-<div class="alert alert-warn enter">
+<sl-alert variant="warning" open class="enter flash-alert">
+  <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
   {{ t("index.empty_accounts").replace("{link}", '<a href="/settings/accounts">').replace("{/link}", "</a>") | safe }}
-</div>
+</sl-alert>
 {% endif %}
 
 <form class="panel enter" id="upload-form" action="/convert" method="post" enctype="multipart/form-data">
@@ -42,7 +43,7 @@
     {% endif %}
   </label>
 
-  <button type="submit" class="btn primary block" {% if not accounts %}disabled{% endif %}>{{ t("index.submit") }}</button>
+  <sl-button type="submit" variant="primary" class="block-btn" {% if not accounts %}disabled{% endif %}>{{ t("index.submit") }}</sl-button>
 </form>
 
 <aside class="hints enter">
