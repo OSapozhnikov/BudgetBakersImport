@@ -11,3 +11,5 @@ venv/
 .vscode/
 *.xlsx
 *.csv
+node_modules/
+app/static/vendor/

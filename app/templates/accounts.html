@@ -11,17 +11,18 @@
 
 <div class="actions enter">
   <form action="/settings/accounts/refresh" method="post">
-    <button type="submit" class="btn primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
+    <sl-button type="submit" variant="primary" {% if not token_configured %}title="{{ t('accounts.token_hint') }}"{% endif %}>
       {{ t("accounts.refresh") }}
-    </button>
+    </sl-button>
   </form>
-  <a class="btn" href="/">{{ t("accounts.back") }}</a>
+  <sl-button href="/">{{ t("accounts.back") }}</sl-button>
 </div>
 
 {% if not token_configured %}
-<div class="alert alert-warn enter">
+<sl-alert variant="warning" open class="enter flash-alert">
+  <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
   {{ t("accounts.no_token", code="<code>BUDGETBAKERS_API_TOKEN</code>") | safe }}
-</div>
+</sl-alert>
 {% endif %}
 
 <form action="/settings/accounts/add" method="post" class="panel inline-form enter">
@@ -29,13 +30,14 @@
     <span>{{ t("accounts.add_label") }}</span>
     <input type="text" name="name" maxlength="80" placeholder="{{ default_account }}" required>
   </label>
-  <button type="submit" class="btn primary">{{ t("accounts.add") }}</button>
+  <sl-button type="submit" variant="primary">{{ t("accounts.add") }}</sl-button>
 </form>
 
 {% if not accounts %}
-<div class="alert enter">
+<sl-alert open class="enter flash-alert">
+  <sl-icon slot="icon" name="info-circle"></sl-icon>
   {{ t("accounts.empty") }}
-</div>
+</sl-alert>
 {% else %}
 <div class="panel enter">
   <div class="table-wrap flat">
@@ -70,7 +72,7 @@
           <td>
             <form action="/settings/accounts/delete" method="post" class="inline">
               <input type="hidden" name="name" value="{{ acc.name }}">
-              <button type="submit" class="btn danger small">{{ t("accounts.delete") }}</button>
+              <sl-button type="submit" variant="danger" size="small">{{ t("accounts.delete") }}</sl-button>
             </form>
           </td>
         </tr>

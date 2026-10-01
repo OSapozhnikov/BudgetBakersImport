@@ -54,6 +54,11 @@ class AppSmokeTests(unittest.TestCase):
         self.assertIn("text/html", resp.headers.get("content-type", ""))
         self.assertIn(f"Version {__version__}", resp.text)
         self.assertIn(f"/static/style.css?v={__version__}", resp.text)
+        self.assertIn(
+            f"/static/vendor/shoelace/themes/light.css?v={__version__}",
+            resp.text,
+        )
+        self.assertIn("/static/vendor/shoelace/shoelace-autoloader.js", resp.text)
 
     def test_accounts_primary_with_temp_data_dir(self) -> None:
         add = self.client.post(

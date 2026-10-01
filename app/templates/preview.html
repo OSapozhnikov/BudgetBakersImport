@@ -30,20 +30,20 @@
 <form id="selection-form" method="post" data-account="{{ account_name }}">
   <div class="actions sticky-actions enter" id="preview-actions">
     <div class="import-cta">
-      <button type="button"
-              class="btn primary"
+      <sl-button type="button"
+              variant="primary"
               id="import-open"
               {% if not can_import %}disabled title="{{ import_disabled_reason }}"{% endif %}>
         {{ t("preview.import") }}
-      </button>
+      </sl-button>
       {% if import_disabled_reason %}
       <p class="muted hint">{{ import_disabled_reason }}</p>
       {% endif %}
     </div>
-    <button type="submit" class="btn" id="download-csv" formaction="/download/{{ job_id }}">
+    <sl-button type="submit" id="download-csv" formaction="/download/{{ job_id }}">
       {{ t("preview.download_csv") }}
-    </button>
-    <a class="btn" href="/">{{ t("preview.back") }}</a>
+    </sl-button>
+    <sl-button href="/">{{ t("preview.back") }}</sl-button>
     <span class="selected-counter" id="selected-counter"
           data-template="{{ t('preview.selected_counter', n='__N__', total='__TOTAL__') }}">
       {{ t("preview.selected_counter", n=0, total=total_rows) }}
@@ -51,18 +51,19 @@
   </div>
 
   <div class="filter-bar enter" role="group" aria-label="filters">
-    <button type="button" class="chip active" data-filter="all">{{ t("preview.filter_all") }}</button>
-    <button type="button" class="chip" data-filter="unmapped">{{ t("preview.filter_unmapped") }}</button>
-    <button type="button" class="chip" data-filter="fx">{{ t("preview.filter_fx") }}</button>
+    <sl-button type="button" size="small" class="filter-chip" variant="primary" data-filter="all">{{ t("preview.filter_all") }}</sl-button>
+    <sl-button type="button" size="small" class="filter-chip" data-filter="unmapped">{{ t("preview.filter_unmapped") }}</sl-button>
+    <sl-button type="button" size="small" class="filter-chip" data-filter="fx">{{ t("preview.filter_fx") }}</sl-button>
     <span class="muted filter-hint">{{ t("preview.filter_hint") }}</span>
   </div>
 
   <p class="muted enter">{{ t("preview.export_file") }} <code class="export-name">{{ export_filename }}</code></p>
 
   {% if duplicate_count %}
-  <div class="alert alert-warn enter">
+  <sl-alert variant="warning" open class="enter flash-alert">
+    <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
     {{ t("preview.duplicates_banner", n=duplicate_count) }}
-  </div>
+  </sl-alert>
   {% endif %}
 
   {% if import_result %}
@@ -71,7 +72,8 @@
     {% if import_result.aborted %}{{ t("preview.import_aborted_suffix") }}{% endif %}
   </p>
   {% if import_errors %}
-  <div class="alert alert-warn enter">
+  <sl-alert variant="warning" open class="enter flash-alert">
+    <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
     {{ t("preview.record_errors") }}
     <ul>
       {% for e in import_errors %}
@@ -86,15 +88,16 @@
       <li>{{ t("preview.and_more", n=import_error_total - import_errors|length) }}</li>
       {% endif %}
     </ul>
-  </div>
+  </sl-alert>
   {% endif %}
   {% endif %}
 
   {% if unmapped_categories %}
-  <div class="alert alert-warn enter">
+  <sl-alert variant="warning" open class="enter flash-alert">
+    <sl-icon slot="icon" name="exclamation-triangle"></sl-icon>
     {{ t("preview.unmapped") }}
     {{ unmapped_categories | join(", ") }}
-  </div>
+  </sl-alert>
   {% endif %}
 
   {% if warnings %}
@@ -164,9 +167,9 @@
           </td>
           <td class="date-cell">
             {{ r.date.strftime('%d.%m.%Y') }}
-            {% if r.is_duplicate %}<span class="tag tag-dup">{{ t("preview.tag_duplicate") }}</span>{% endif %}
-            {% if r.fp_collision %}<span class="tag tag-collision">{{ t("preview.tag_fp_collision") }}</span>{% endif %}
-            {% if r.fx_blocked %}<span class="tag tag-fx-blocked">{{ t("preview.tag_fx_blocked") }}</span>{% endif %}
+            {% if r.is_duplicate %}<sl-badge variant="neutral" pill class="row-badge">{{ t("preview.tag_duplicate") }}</sl-badge>{% endif %}
+            {% if r.fp_collision %}<sl-badge variant="danger" pill class="row-badge">{{ t("preview.tag_fp_collision") }}</sl-badge>{% endif %}
+            {% if r.fx_blocked %}<sl-badge variant="warning" pill class="row-badge">{{ t("preview.tag_fx_blocked") }}</sl-badge>{% endif %}
           </td>
           <td class="counterparty">{{ r.counter_party }}</td>
           <td class="note">{{ r.note }}</td>
@@ -189,7 +192,7 @@
             {% else %}
             {{ r.category }}
             {% endif %}
-            {% if r.unmapped %}<span class="tag unmapped-tag">{{ t("preview.tag_unmapped") }}</span>{% endif %}
+            {% if r.unmapped %}<sl-badge variant="warning" pill class="unmapped-tag row-badge">{{ t("preview.tag_unmapped") }}</sl-badge>{% endif %}
           </td>
           <td class="num">{% if r.fx_blocked %}—{% else %}{{ '%.2f'|format(r.amount|float) }}{% endif %}</td>
           <td>{% if r.fx_blocked %}{{ r.currency }}{% else %}₴{% endif %}</td>
@@ -202,23 +205,18 @@
   </div>
 </form>
 
-<dialog id="import-modal" class="import-modal">
-  <form method="dialog" class="modal-panel">
-    <h2>{{ t("preview.modal_title") }}</h2>
-    <dl class="modal-stats">
-      <div><dt>{{ t("preview.modal_selected") }}</dt><dd id="modal-selected">0</dd></div>
-      <div><dt>{{ t("preview.modal_expense") }}</dt><dd id="modal-expense">0.00</dd></div>
-      <div><dt>{{ t("preview.modal_income") }}</dt><dd id="modal-income">0.00</dd></div>
-      <div><dt>{{ t("preview.modal_unmapped") }}</dt><dd id="modal-unmapped">0</dd></div>
-      <div><dt>{{ t("preview.modal_duplicates") }}</dt><dd id="modal-duplicates">0</dd></div>
-      <div><dt>{{ t("preview.modal_account") }}</dt><dd id="modal-account">{{ account_name }}</dd></div>
-    </dl>
-    <div class="modal-actions">
-      <button type="submit" value="cancel" class="btn">{{ t("preview.modal_cancel") }}</button>
-      <button type="button" class="btn primary" id="modal-confirm">{{ t("preview.modal_confirm") }}</button>
-    </div>
-  </form>
-</dialog>
+<sl-dialog id="import-modal" label="{{ t('preview.modal_title') }}" class="import-dialog">
+  <dl class="modal-stats">
+    <div><dt>{{ t("preview.modal_selected") }}</dt><dd id="modal-selected">0</dd></div>
+    <div><dt>{{ t("preview.modal_expense") }}</dt><dd id="modal-expense">0.00</dd></div>
+    <div><dt>{{ t("preview.modal_income") }}</dt><dd id="modal-income">0.00</dd></div>
+    <div><dt>{{ t("preview.modal_unmapped") }}</dt><dd id="modal-unmapped">0</dd></div>
+    <div><dt>{{ t("preview.modal_duplicates") }}</dt><dd id="modal-duplicates">0</dd></div>
+    <div><dt>{{ t("preview.modal_account") }}</dt><dd id="modal-account">{{ account_name }}</dd></div>
+  </dl>
+  <sl-button slot="footer" class="dialog-cancel">{{ t("preview.modal_cancel") }}</sl-button>
+  <sl-button slot="footer" variant="primary" id="modal-confirm">{{ t("preview.modal_confirm") }}</sl-button>
+</sl-dialog>
 
 <script>
 (function () {
@@ -228,7 +226,8 @@
   var jobId = {{ job_id | tojson }};
   var i18n = {
     pickOne: {{ t("preview.js_pick_one") | tojson }},
-    categoryError: {{ t("preview.js_category_error") | tojson }}
+    categoryError: {{ t("preview.js_category_error") | tojson }},
+    tagUnmapped: {{ t("preview.tag_unmapped") | tojson }}
   };
 
   var selectAll = document.getElementById("select-all");
@@ -236,6 +235,7 @@
   var importOpen = document.getElementById("import-open");
   var modal = document.getElementById("import-modal");
   var modalConfirm = document.getElementById("modal-confirm");
+  var modalCancel = modal ? modal.querySelector(".dialog-cancel") : null;
   var activeFilter = "all";
 
   function rowBoxes() {
@@ -275,13 +275,14 @@
       if (filter === "fx") show = tr.getAttribute("data-fx") === "1";
       tr.style.display = show ? "" : "none";
     });
-    document.querySelectorAll(".filter-bar .chip").forEach(function (chip) {
-      chip.classList.toggle("active", chip.getAttribute("data-filter") === filter);
+    document.querySelectorAll(".filter-bar .filter-chip").forEach(function (chip) {
+      var on = chip.getAttribute("data-filter") === filter;
+      chip.setAttribute("variant", on ? "primary" : "default");
     });
     syncSelectAll();
   }
 
-  document.querySelectorAll(".filter-bar .chip").forEach(function (chip) {
+  document.querySelectorAll(".filter-bar .filter-chip").forEach(function (chip) {
     chip.addEventListener("click", function () {
       applyFilter(chip.getAttribute("data-filter") || "all");
     });
@@ -332,10 +333,12 @@
           tr.classList.add("row-warn");
           tr.setAttribute("data-unmapped", "1");
           if (!tag) {
-            var span = document.createElement("span");
-            span.className = "tag unmapped-tag";
-            span.textContent = {{ t("preview.tag_unmapped") | tojson }};
-            sel.insertAdjacentElement("afterend", span);
+            var badge = document.createElement("sl-badge");
+            badge.className = "unmapped-tag row-badge";
+            badge.setAttribute("variant", "warning");
+            badge.setAttribute("pill", "");
+            badge.textContent = i18n.tagUnmapped;
+            sel.insertAdjacentElement("afterend", badge);
           }
         }
       }).catch(function () {
@@ -381,8 +384,13 @@
         alert(i18n.pickOne);
         return;
       }
-      if (typeof modal.showModal === "function") modal.showModal();
-      else modal.setAttribute("open", "");
+      if (typeof modal.show === "function") modal.show();
+    });
+  }
+
+  if (modalCancel && modal) {
+    modalCancel.addEventListener("click", function () {
+      if (typeof modal.hide === "function") modal.hide();
     });
   }
 
@@ -393,7 +401,7 @@
         return;
       }
       form.setAttribute("action", "/import/" + jobId);
-      if (modal && typeof modal.close === "function") modal.close();
+      if (modal && typeof modal.hide === "function") modal.hide();
       form.submit();
     });
   }
