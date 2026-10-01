@@ -59,7 +59,7 @@ class CategoryMappingStore:
         return self._discovered.mutate(apply, default=[])
 
     def load_discovered(self) -> list[str]:
-        raw = self._discovered.load(default=[])
+        raw: object = self._discovered.load(default=[])
         if not isinstance(raw, list):
             return []
         return [str(x) for x in raw if x]

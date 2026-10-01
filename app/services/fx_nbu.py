@@ -106,9 +106,9 @@ class NbuFxConverter:
 
         rate, rate_date = rate_info
         amount_uah = _round2(amount * rate)
-        warning = None
+        lookback_warning: ErrorMessage | None = None
         if rate_date != op_date:
-            warning = ErrorMessage(
+            lookback_warning = ErrorMessage(
                 "fx.rate_lookback",
                 {
                     "source_row": "",
@@ -125,7 +125,7 @@ class NbuFxConverter:
             rate=rate,
             rate_date=rate_date,
             converted=True,
-            warning=warning,
+            warning=lookback_warning,
         )
 
     def _resolve_rate(self, currency: str, op_date: date) -> tuple[Decimal, date] | None:
@@ -173,7 +173,7 @@ class NbuFxConverter:
     def _load_disk(self) -> None:
         if self._disk is None:
             return
-        raw = self._disk.load(default={})
+        raw: object = self._disk.load(default={})
         if not isinstance(raw, dict):
             return
         rates = raw.get("rates") if "rates" in raw else raw

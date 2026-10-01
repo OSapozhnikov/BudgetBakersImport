@@ -1,7 +1,11 @@
+"""Durable BudgetBakers account directory."""
+
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from app.persistence.json_store import JsonFileStore
 
@@ -25,16 +29,18 @@ class AccountsStore:
     def path(self) -> Path:
         return self._store.path
 
-    def list(self) -> list[StoredAccount]:
+    def list(self) -> builtins.list[StoredAccount]:
         return _parse_accounts(self._store.load(default=[]))
 
-    def names(self) -> list[str]:
+    def names(self) -> builtins.list[str]:
         return [a.name for a in self.list()]
 
-    def merge_from_api(self, accounts: list[tuple[str, str | None]]) -> list[StoredAccount]:
+    def merge_from_api(
+        self, accounts: builtins.list[tuple[str, str | None]]
+    ) -> builtins.list[StoredAccount]:
         """Upsert API accounts by name; keep manual-only entries not present in API."""
 
-        def apply(raw: object) -> list[dict]:
+        def apply(raw: object) -> builtins.list[dict[str, Any]]:
             current = _parse_accounts(raw)
             by_name = {a.name.casefold(): a for a in current}
             for name, account_id in accounts:
@@ -52,15 +58,15 @@ class AccountsStore:
             merged = sorted(by_name.values(), key=lambda a: a.name.casefold())
             return _to_payload(merged)
 
-        payload = self._store.mutate(apply, default=[])
+        payload: builtins.list[dict[str, Any]] = self._store.mutate(apply, default=[])
         return _parse_accounts(payload)
 
-    def add_manual(self, name: str) -> list[StoredAccount]:
+    def add_manual(self, name: str) -> builtins.list[StoredAccount]:
         clean = str(name).strip()
         if not clean:
             raise ValueError("err.account_empty_name")
 
-        def apply(raw: object) -> list[dict]:
+        def apply(raw: object) -> builtins.list[dict[str, Any]]:
             current = _parse_accounts(raw)
             key = clean.casefold()
             for acc in current:
@@ -72,12 +78,12 @@ class AccountsStore:
 
         return _parse_accounts(self._store.mutate(apply, default=[]))
 
-    def remove(self, name_or_id: str) -> list[StoredAccount]:
+    def remove(self, name_or_id: str) -> builtins.list[StoredAccount]:
         target = str(name_or_id).strip()
         if not target:
             return self.list()
 
-        def apply(raw: object) -> list[dict]:
+        def apply(raw: object) -> builtins.list[dict[str, Any]]:
             current = _parse_accounts(raw)
             kept = [
                 a
@@ -88,13 +94,13 @@ class AccountsStore:
 
         return _parse_accounts(self._store.mutate(apply, default=[]))
 
-    def set_primary(self, name: str) -> list[StoredAccount]:
+    def set_primary(self, name: str) -> builtins.list[StoredAccount]:
         """Mark ``name`` as the exclusive primary account, or unset if already primary."""
         target = str(name).strip()
         if not target:
             return self.list()
 
-        def apply(raw: object) -> list[dict]:
+        def apply(raw: object) -> builtins.list[dict[str, Any]]:
             current = _parse_accounts(raw)
             key = target.casefold()
             if not any(a.name.casefold() == key for a in current):
@@ -114,7 +120,7 @@ class AccountsStore:
         return _parse_accounts(self._store.mutate(apply, default=[]))
 
 
-def _to_payload(accounts: list[StoredAccount]) -> list[dict]:
+def _to_payload(accounts: builtins.list[StoredAccount]) -> builtins.list[dict[str, Any]]:
     return [
         {
             "name": a.name,
@@ -126,10 +132,10 @@ def _to_payload(accounts: list[StoredAccount]) -> list[dict]:
     ]
 
 
-def _parse_accounts(raw: object) -> list[StoredAccount]:
+def _parse_accounts(raw: object) -> builtins.list[StoredAccount]:
     if not isinstance(raw, list):
         return []
-    result: list[StoredAccount] = []
+    result: builtins.list[StoredAccount] = []
     seen: set[str] = set()
     for item in raw:
         if isinstance(item, str):

@@ -18,7 +18,7 @@ class CategoryCacheStore:
         return self._store.path
 
     def load(self) -> list[dict[str, Any]]:
-        raw = self._store.load(default=[])
+        raw: object = self._store.load(default=[])
         if not isinstance(raw, list):
             return []
         return [x for x in raw if isinstance(x, dict) and x.get("name")]

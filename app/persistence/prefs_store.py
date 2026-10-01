@@ -36,5 +36,5 @@ class PrefsStore:
         self._store.mutate(apply, default={})
 
     def load(self) -> dict[str, Any]:
-        raw = self._store.load(default={})
+        raw: Any = self._store.load(default={})
         return dict(raw) if isinstance(raw, dict) else {}
