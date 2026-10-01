@@ -382,6 +382,18 @@ form.inline { display: inline; margin: 0; }
   margin-left: 0.35rem;
 }
 
+.tag-fx-blocked {
+  background: #fef3c7;
+  color: #92400e;
+  margin-left: 0.35rem;
+}
+
+.tag-collision {
+  background: #ffe4e6;
+  color: #9f1239;
+  margin-left: 0.35rem;
+}
+
 select.category-inline {
   min-width: 0;
   width: 100%;

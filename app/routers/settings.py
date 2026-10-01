@@ -47,6 +47,8 @@ def settings_router() -> APIRouter:
             with BudgetBakersCategoriesClient(
                 base_url=settings.budgetbakers_api_base,
                 token=settings.budgetbakers_api_token,
+                max_pages=settings.max_wallet_pages,
+                max_items=settings.max_wallet_items,
             ) as client:
                 bb_categories = client.list_categories()
             request.app.state.category_cache.save(
@@ -55,9 +57,9 @@ def settings_router() -> APIRouter:
         except AppError as exc:
             logging.exception("Failed to refresh BB categories")
             error = t(exc.code, **exc.params)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logging.exception("Failed to refresh BB categories")
-            error = str(exc)
+            error = t("err.refresh_failed")
 
         return categories_page(
             request,
@@ -110,6 +112,8 @@ def settings_router() -> APIRouter:
             with BudgetBakersAccountsClient(
                 base_url=settings.budgetbakers_api_base,
                 token=settings.budgetbakers_api_token,
+                max_pages=settings.max_wallet_pages,
+                max_items=settings.max_wallet_items,
             ) as client:
                 api_accounts = client.list_accounts()
             request.app.state.accounts_store.merge_from_api(
@@ -119,9 +123,9 @@ def settings_router() -> APIRouter:
         except AppError as exc:
             logging.exception("Failed to refresh BB accounts")
             error = t(exc.code, **exc.params)
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logging.exception("Failed to refresh BB accounts")
-            error = str(exc)
+            error = t("err.refresh_failed")
 
         return accounts_page(
             request,

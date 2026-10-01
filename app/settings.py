@@ -21,8 +21,12 @@ class Settings(BaseSettings):
     budgetbakers_api_token: str = ""
 
     nbu_fx_lookback_days: int = 7
-    preview_row_limit: int = 50
     max_upload_bytes: int = 15 * 1024 * 1024
+    max_excel_rows: int = 20_000
+    max_excel_uncompressed_bytes: int = 64 * 1024 * 1024
+    max_wallet_pages: int = 50
+    max_wallet_items: int = 10_000
+    fingerprint_warn_count: int = 50_000
 
 
 @lru_cache

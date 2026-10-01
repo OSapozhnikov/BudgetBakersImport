@@ -6,11 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.settings import Settings
 from app.version import __version__
+from fastapi.testclient import TestClient
 
 
 class AppSmokeTests(unittest.TestCase):
@@ -78,6 +77,27 @@ class AppSmokeTests(unittest.TestCase):
         path = Path(self._tmp.name) / "accounts.json"
         self.assertTrue(path.exists())
         self.assertIn("Primary Cash", path.read_text(encoding="utf-8"))
+
+    def test_openapi_disabled(self) -> None:
+        self.assertEqual(self.client.get("/docs").status_code, 404)
+        self.assertEqual(self.client.get("/redoc").status_code, 404)
+        self.assertEqual(self.client.get("/openapi.json").status_code, 404)
+
+    def test_cross_site_post_forbidden(self) -> None:
+        resp = self.client.post(
+            "/settings/accounts/add",
+            data={"name": "Evil"},
+            headers={"Sec-Fetch-Site": "cross-site"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_foreign_origin_post_forbidden(self) -> None:
+        resp = self.client.post(
+            "/settings/accounts/add",
+            data={"name": "Evil"},
+            headers={"Origin": "https://evil.example", "Host": "testserver"},
+        )
+        self.assertEqual(resp.status_code, 403)
 
 
 if __name__ == "__main__":

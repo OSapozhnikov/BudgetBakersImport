@@ -7,6 +7,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from app.persistence.fingerprints import FingerprintStore
 from app.services.csv_export import ExportRow
 
+__all__ = [
+    "FingerprintStore",
+    "fingerprint_from_api_item",
+    "fingerprint_hash",
+    "fingerprint_parts",
+    "fingerprint_row",
+    "normalize_text",
+]
+
 _WHITESPACE = re.compile(r"\s+")
 _TWO_PLACES = Decimal("0.01")
 

@@ -55,11 +55,15 @@ class BudgetBakersClient:
         token: str,
         client: httpx.Client | None = None,
         timeout: float = 30.0,
+        max_pages: int = 50,
+        max_items: int = 10_000,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.token = token.strip()
         self._client = client or httpx.Client(timeout=timeout)
         self._owns_client = client is None
+        self.max_pages = max(1, int(max_pages))
+        self.max_items = max(1, int(max_items))
 
     def close(self) -> None:
         if self._owns_client:
@@ -125,20 +129,38 @@ class BudgetBakersClient:
         params: dict[str, Any] | None = None,
         page_size: int = 100,
         resource: str,
+        max_pages: int | None = None,
+        max_items: int | None = None,
     ) -> list[dict[str, Any]]:
         self.require_token()
         results: list[dict[str, Any]] = []
         offset = 0
+        pages = 0
+        page_ceiling = max(1, int(max_pages if max_pages is not None else self.max_pages))
+        item_ceiling = max(1, int(max_items if max_items is not None else self.max_items))
         extra = dict(params or {})
         while True:
+            if pages >= page_ceiling:
+                raise AppError(
+                    "wallet.pagination_limit",
+                    resource=resource,
+                    max_pages=page_ceiling,
+                )
             query: dict[str, Any] = {**extra, "limit": page_size, "offset": offset}
             resp = self.request("GET", path, params=query)
             self.raise_for_status(resp, resource=resource)
             payload = response_json(resp)
             items = extract_items(payload)
+            pages += 1
             if not items:
                 break
             results.extend(items)
+            if len(results) > item_ceiling:
+                raise AppError(
+                    "wallet.pagination_limit",
+                    resource=resource,
+                    max_items=item_ceiling,
+                )
             next_offset = payload.get("nextOffset") if isinstance(payload, dict) else None
             if next_offset is None or next_offset == offset:
                 if len(items) < page_size:

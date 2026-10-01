@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
+from zipfile import BadZipFile, ZipFile
 
 from openpyxl import load_workbook
 
@@ -37,6 +38,10 @@ CURRENCY_ALIASES: dict[str, str] = {
 
 # Excel serial date epoch (Windows 1900 date system).
 _EXCEL_EPOCH = datetime(1899, 12, 30)
+
+DEFAULT_MAX_ROWS = 20_000
+DEFAULT_MAX_UNCOMPRESSED = 64 * 1024 * 1024
+
 
 
 @dataclass
@@ -157,10 +162,28 @@ def _is_completed(status: Any) -> bool:
     return text == COMPLETED_STATUS
 
 
-def parse_excel(content: bytes) -> ParseResult:
+def _assert_zip_budget(content: bytes, max_uncompressed: int) -> None:
+    """Reject xlsx/xlsm archives whose declared uncompressed size exceeds the cap."""
+    try:
+        with ZipFile(BytesIO(content)) as zf:
+            total = sum(info.file_size for info in zf.infolist())
+    except BadZipFile as exc:
+        raise AppError("err.excel_read", exc="not a valid Excel zip") from exc
+    if total > max_uncompressed:
+        max_mb = max(1, max_uncompressed // (1024 * 1024))
+        raise AppError("err.excel_too_large", max_mb=max_mb)
+
+
+def parse_excel(
+    content: bytes,
+    *,
+    max_rows: int = DEFAULT_MAX_ROWS,
+    max_uncompressed_bytes: int = DEFAULT_MAX_UNCOMPRESSED,
+) -> ParseResult:
     """Parse bank Excel export (BudgetBakers-compatible column layout) into rows."""
+    _assert_zip_budget(content, max_uncompressed_bytes)
     bio = BytesIO(content)
-    wb = load_workbook(bio, read_only=True, data_only=True)
+    wb = load_workbook(bio, read_only=True, data_only=True, keep_links=False)
     try:
         ws = wb.active
         if ws is None:
@@ -179,12 +202,20 @@ def parse_excel(content: bytes) -> ParseResult:
         result = ParseResult()
         categories: set[str] = set()
         has_data = False
+        row_cap = max(1, int(max_rows))
 
         for idx, values in enumerate(rows_iter):
+            if idx >= row_cap:
+                raise AppError("err.excel_too_many_rows", max_rows=row_cap)
             has_data = True
             source_row = idx + 2  # header is row 1
             cells = list(values)
-            status_val = cells[colmap["status"]] if "status" in colmap and colmap["status"] < len(cells) else None
+            status_idx = colmap.get("status")
+            status_val = (
+                cells[status_idx]
+                if status_idx is not None and status_idx < len(cells)
+                else None
+            )
             if not _is_completed(status_val):
                 result.skipped += 1
                 continue

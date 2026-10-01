@@ -40,6 +40,10 @@
   "preview.filter_fx": "FX",
   "preview.filter_hint": "Filters only hide rows; checked state of hidden rows is kept for import/CSV.",
   "preview.tag_duplicate": "already imported",
+  "preview.tag_fx_blocked": "no FX rate",
+  "preview.tag_fp_collision": "same-file match",
+  "preview.fp_collision_warn": "{n} groups of rows in this file share a fingerprint (date/amount/note) — unchecked by default.",
+  "preview.fingerprints_large": "Local fingerprint history is large ({count}; threshold {threshold}).",
   "preview.duplicates_banner": "Found {n} possible duplicates (unchecked by default).",
   "preview.dedup_api_warn": "Could not check duplicates via Wallet API — using local history only.",
   "preview.export_file": "Export file:",
@@ -130,6 +134,7 @@
   "err.job_not_found": "Job not found or expired. {link}Upload the file again{/link}.",
   "err.pick_rows_csv": "Select at least one transaction to download CSV.",
   "err.already_imported": "This job has already been imported.",
+  "err.fx_blocked_only": "Selected rows have no NBU rate and cannot be imported.",
   "err.no_rows_import": "No rows to import.",
   "err.pick_rows_import": "Select at least one transaction to import.",
   "err.need_token": "Set BUDGETBAKERS_API_TOKEN first.",
@@ -145,6 +150,11 @@
   "err.account_empty_name": "Account name is empty.",
   "err.row_not_found": "Row not found.",
   "err.file_too_large": "The file is too large (max {max_mb} MiB).",
+  "err.excel_too_large": "Excel archive is too large when uncompressed (max {max_mb} MiB).",
+  "err.excel_too_many_rows": "Too many rows in the file (max {max_rows}).",
+  "err.data_corrupt": "Data file is corrupt ({path}). Restore from .bak or fix it manually.",
+  "err.data_unreadable": "Could not read data file ({path}): {exc}",
+  "err.refresh_failed": "Failed to refresh data from the BudgetBakers API.",
   "parse.missing_columns": "Required columns not found: {missing}. File headers: {headers}",
   "parse.empty_date": "empty date",
   "parse.bad_date": "unknown date format: {value}",
@@ -164,5 +174,6 @@
   "wallet.network": "Network error: {exc}",
   "wallet.empty_account": "accountId is empty.",
   "wallet.item_error": "Failed to create the record.",
-  "wallet.missing_item": "No result for this row in the API response."
+  "wallet.missing_item": "No result for this row in the API response.",
+  "wallet.pagination_limit": "BudgetBakers API: too many pages/items for {resource} (pagination limit)."
 }

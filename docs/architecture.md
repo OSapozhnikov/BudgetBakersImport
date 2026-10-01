@@ -10,7 +10,7 @@ This document describes the **as-built** design. Auth, multi-user tenancy, and e
 - **`WEB_CONCURRENCY=1` is required.** Conversion jobs live in process memory. Extra uvicorn workers fork the job map and can lose preview state or double-import.
 - Durable state is JSON under `DATA_DIR` (default `./data`, `/data` in Docker)
 - Money is `Decimal` through the domain. Wallet `POST /records` JSON uses a JSON number (`float(str(amount))`) because the API expects a numeric `amount.value`
-- Blocking I/O (Excel parse, NBU, Wallet) runs on the worker thread; convert/import routes are synchronous aside from `await file.read()`
+- Blocking I/O (Excel parse, NBU, Wallet): `POST /convert` reads the upload on the event loop, then runs `convert_upload` via `run_in_threadpool`. Import routes are synchronous (threadpool).
 
 ## Layers
 

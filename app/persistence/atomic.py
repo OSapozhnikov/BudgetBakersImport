@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
-    """Write JSON so a crash cannot leave a truncated destination file."""
+    """Write JSON so a crash cannot leave a truncated destination file.
+
+    If ``path`` already exists, copy it to ``path.bak`` before replace.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     data = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     fd, tmp_name = tempfile.mkstemp(
@@ -23,6 +27,9 @@ def atomic_write_json(path: Path, payload: Any) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
+        if path.exists():
+            bak = path.with_suffix(path.suffix + ".bak")
+            shutil.copy2(path, bak)
         os.replace(tmp_name, path)
     except Exception:
         try:

@@ -24,8 +24,16 @@ class BudgetBakersAccountsClient:
         token: str,
         client: Any = None,
         page_size: int = 100,
+        max_pages: int = 50,
+        max_items: int = 10_000,
     ) -> None:
-        self._http = BudgetBakersClient(base_url=base_url, token=token, client=client)
+        self._http = BudgetBakersClient(
+            base_url=base_url,
+            token=token,
+            client=client,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
         self.page_size = page_size
 
     def close(self) -> None:

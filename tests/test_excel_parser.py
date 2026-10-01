@@ -6,9 +6,8 @@ import unittest
 from datetime import date
 from io import BytesIO
 
-from openpyxl import Workbook
-
 from app.services.excel_parser import parse_excel
+from openpyxl import Workbook
 
 
 def _minimal_xlsx_bytes() -> bytes:

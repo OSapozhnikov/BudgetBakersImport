@@ -33,18 +33,21 @@ def import_selected_rows(
     if not result.rows:
         raise AppError("err.no_rows_import")
     selected_idx = unique_indices(len(result.rows), indices)
-    remaining_idx = [i for i in selected_idx if i not in job.imported_indices]
     if not selected_idx:
         raise AppError("err.pick_rows_import")
-    if not remaining_idx:
-        raise AppError("err.already_imported")
     if not token:
         raise AppError("err.need_token")
     if not account_id:
         raise AppError("err.need_account_id")
 
-    selected = [result.rows[i] for i in remaining_idx]
+    if selected_idx and all(result.rows[i].fx_blocked for i in selected_idx):
+        raise AppError("err.fx_blocked_only")
 
+    claimed_idx = job.claim_indices(selected_idx)
+    if not claimed_idx:
+        raise AppError("err.already_imported")
+
+    selected = [result.rows[i] for i in claimed_idx]
     try:
         with BudgetBakersRecordsClient(
             base_url=settings.budgetbakers_api_base,
@@ -56,24 +59,43 @@ def import_selected_rows(
                 category_cache=category_cache.load(),
             )
     except AppError:
+        job.release_in_flight(claimed_idx)
         raise
     except (RuntimeError, ValueError) as exc:
+        job.release_in_flight(claimed_idx)
         raise AppError("err.import_failed", exc=exc) from exc
     except Exception as exc:  # noqa: BLE001
+        job.release_in_flight(claimed_idx)
         logging.exception("BudgetBakers import failed")
         raise AppError("err.import_failed", exc=exc) from exc
 
-    if import_result.succeeded_indices:
-        persist_successful_import(
-            fingerprint_store=fingerprint_store,
-            history_store=history_store,
-            job=job,
-            job_id=job_id,
-            selected=selected,
-            selected_original_indices=remaining_idx,
-            import_result=import_result,
-            account_id=account_id,
-        )
+    try:
+        if import_result.succeeded_indices:
+            persist_successful_import(
+                fingerprint_store=fingerprint_store,
+                history_store=history_store,
+                job=job,
+                job_id=job_id,
+                selected=selected,
+                selected_original_indices=claimed_idx,
+                import_result=import_result,
+                account_id=account_id,
+            )
+        else:
+            job.release_in_flight(claimed_idx)
+    except Exception:
+        # Succeeded rows already marked when possible; release leftover in_flight.
+        job.release_in_flight(claimed_idx)
+        raise
+
+    # Rows that failed or were never sent stay selectable.
+    unfinished = [
+        claimed_idx[i]
+        for i in range(len(claimed_idx))
+        if i not in set(import_result.succeeded_indices)
+    ]
+    if unfinished:
+        job.release_in_flight(unfinished)
 
     logging.info(
         "Import job %s: succeeded=%s failed=%s skipped_zero=%s not_sent=%s aborted=%s",
@@ -100,6 +122,7 @@ def persist_successful_import(
 ) -> None:
     """Save fingerprints for succeeded rows and append history. No all-rows fallback."""
     succeeded_rows: list[ExportRow] = []
+    succeeded_original: list[int] = []
     seen: set[int] = set()
     for idx in import_result.succeeded_indices:
         if idx < 0 or idx >= len(selected) or idx in seen:
@@ -107,8 +130,11 @@ def persist_successful_import(
         seen.add(idx)
         succeeded_rows.append(selected[idx])
         original = selected_original_indices[idx]
-        job.imported_indices.add(original)
+        succeeded_original.append(original)
         selected[idx].is_duplicate = True
+
+    if succeeded_original:
+        job.mark_imported(succeeded_original)
 
     if succeeded_rows and account_id:
         fps = [fingerprint_row(row, account_id) for row in succeeded_rows]

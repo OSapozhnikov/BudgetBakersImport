@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar, cast
 
+from app.errors import AppError
 from app.persistence.atomic import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -43,10 +45,13 @@ class JsonFileStore:
             return default
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except OSError as exc:
             logger.warning("Failed to read %s: %s", self.path, exc)
-            return default
-        return raw  # type: ignore[return-value]
+            raise AppError("err.data_unreadable", path=str(self.path), exc=str(exc)) from exc
+        except json.JSONDecodeError as exc:
+            logger.error("Corrupt JSON at %s: %s", self.path, exc)
+            raise AppError("err.data_corrupt", path=str(self.path)) from exc
+        return cast(T, raw)
 
     def _write_unlocked(self, payload: Any) -> None:
         atomic_write_json(self.path, payload)

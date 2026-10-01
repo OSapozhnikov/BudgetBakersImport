@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import httpx
 
@@ -80,8 +81,16 @@ class BudgetBakersRecordsClient:
         token: str,
         client: httpx.Client | None = None,
         batch_size: int = RECORDS_BATCH_SIZE,
+        max_pages: int = 50,
+        max_items: int = 10_000,
     ) -> None:
-        self._http = BudgetBakersClient(base_url=base_url, token=token, client=client)
+        self._http = BudgetBakersClient(
+            base_url=base_url,
+            token=token,
+            client=client,
+            max_pages=max_pages,
+            max_items=max_items,
+        )
         self.batch_size = min(max(int(batch_size), 1), RECORDS_BATCH_SIZE)
 
     def close(self) -> None:

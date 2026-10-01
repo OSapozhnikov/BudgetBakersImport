@@ -151,19 +151,22 @@
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr class="{% if r.unmapped %}row-warn{% endif %} {% if r.fx_warning or r.fx_converted %}row-fx{% endif %}"
+        <tr class="{% if r.unmapped %}row-warn{% endif %} {% if r.fx_warning or r.fx_converted or r.fx_blocked %}row-fx{% endif %}"
             data-unmapped="{{ '1' if r.unmapped else '0' }}"
-            data-fx="{{ '1' if (r.fx_converted or r.fx_warning) else '0' }}"
+            data-fx="{{ '1' if (r.fx_converted or r.fx_warning or r.fx_blocked) else '0' }}"
             data-duplicate="{{ '1' if r.is_duplicate else '0' }}"
-            data-amount="{{ '%.2f'|format(r.amount|float) }}">
+            data-fx-blocked="{{ '1' if r.fx_blocked else '0' }}"
+            data-amount="{{ '0' if r.fx_blocked else ('%.2f'|format(r.amount|float)) }}">
           <td class="col-check">
             <input type="checkbox" name="row" value="{{ loop.index0 }}"
-                   {% if not r.is_duplicate %}checked{% endif %}
+                   {% if r.fx_blocked %}disabled{% elif not r.is_duplicate and not r.fp_collision %}checked{% endif %}
                    aria-label="{{ t('preview.include_row_aria', n=loop.index) }}">
           </td>
           <td class="date-cell">
             {{ r.date.strftime('%d.%m.%Y') }}
             {% if r.is_duplicate %}<span class="tag tag-dup">{{ t("preview.tag_duplicate") }}</span>{% endif %}
+            {% if r.fp_collision %}<span class="tag tag-collision">{{ t("preview.tag_fp_collision") }}</span>{% endif %}
+            {% if r.fx_blocked %}<span class="tag tag-fx-blocked">{{ t("preview.tag_fx_blocked") }}</span>{% endif %}
           </td>
           <td class="counterparty">{{ r.counter_party }}</td>
           <td class="note">{{ r.note }}</td>
@@ -188,8 +191,8 @@
             {% endif %}
             {% if r.unmapped %}<span class="tag unmapped-tag">{{ t("preview.tag_unmapped") }}</span>{% endif %}
           </td>
-          <td class="num">{{ '%.2f'|format(r.amount|float) }}</td>
-          <td>₴</td>
+          <td class="num">{% if r.fx_blocked %}—{% else %}{{ '%.2f'|format(r.amount|float) }}{% endif %}</td>
+          <td>{% if r.fx_blocked %}{{ r.currency }}{% else %}₴{% endif %}</td>
           <td class="num">{{ '%.2f'|format(r.original_amount|float) }} {{ r.original_currency }}</td>
           <td>{{ r.account }}</td>
         </tr>
@@ -256,7 +259,7 @@
     var boxes = Array.prototype.slice.call(rowBoxes());
     var visible = boxes.filter(function (box) {
       var tr = box.closest("tr");
-      return tr && tr.style.display !== "none";
+      return tr && tr.style.display !== "none" && !box.disabled;
     });
     var checkedVisible = visible.filter(function (box) { return box.checked; });
     selectAll.checked = visible.length > 0 && checkedVisible.length === visible.length;
@@ -287,6 +290,7 @@
   if (selectAll) {
     selectAll.addEventListener("change", function () {
       rowBoxes().forEach(function (box) {
+        if (box.disabled) return;
         var tr = box.closest("tr");
         if (tr && tr.style.display === "none") return;
         box.checked = selectAll.checked;

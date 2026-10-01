@@ -11,6 +11,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from app.errors import AppError
 from app.i18n import get_lang, render_message, translate
 from app.jobs import Job
 from app.persistence.accounts_store import AccountsStore
@@ -117,7 +118,10 @@ def preview_page(
     result: ConversionResult = job.result
     lang = get_lang(request)
     total_rows = len(result.rows)
-    total_amount_uah = sum((r.amount for r in result.rows), Decimal("0"))
+    total_amount_uah = sum(
+        (r.amount for r in result.rows if not r.fx_blocked),
+        Decimal("0"),
+    )
     duplicate_count = sum(1 for r in result.rows if r.is_duplicate)
     import_errors = []
     import_error_total = 0
@@ -148,7 +152,9 @@ def preview_page(
         "active_nav": "convert",
         "job_id": job_id,
         "filename": job.filename,
-        "export_filename": job.export_filename or build_export_filename(job.account_name, result.rows),
+        "export_filename": (
+            job.export_filename or build_export_filename(job.account_name, result.rows)
+        ),
         "account_name": job.account_name,
         "rows": result.rows,
         "total_rows": total_rows,
@@ -156,7 +162,6 @@ def preview_page(
         "total_amount_uah": total_amount_uah,
         "total_amount_uah_display": format_uah_display(total_amount_uah),
         "duplicate_count": duplicate_count,
-        "preview_limit": settings.preview_row_limit,
         "skipped": result.skipped,
         "converted_fx_count": result.converted_fx_count,
         "fx_failures": result.fx_failures,
@@ -198,13 +203,21 @@ def index_page(
     status_code: int = 200,
     selected_account: str | None = None,
 ) -> HTMLResponse:
-    accounts = accounts_store.list()
-    selected = select_account(
-        accounts,
-        settings,
-        preferred=selected_account,
-        last_account_name=prefs_store.get_last_account_name(),
-    )
+    lang = get_lang(request)
+    accounts: list = []
+    selected = selected_account
+    try:
+        accounts = accounts_store.list()
+        selected = select_account(
+            accounts,
+            settings,
+            preferred=selected_account,
+            last_account_name=prefs_store.get_last_account_name(),
+        )
+    except AppError as exc:
+        if not error:
+            error = translate(lang, exc.code, **exc.params)
+        status_code = 500 if status_code == 200 else status_code
     return templates.TemplateResponse(
         request,
         "index.html",

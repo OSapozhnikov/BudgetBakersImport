@@ -8,7 +8,6 @@ from datetime import date
 from decimal import Decimal
 
 import httpx
-
 from app.services.csv_export import ExportRow
 from app.services.records import (
     BudgetBakersRecordsClient,

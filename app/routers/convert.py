@@ -1,3 +1,5 @@
+"""Convert / download / import HTTP routes."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -5,6 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from app.errors import AppError
 from app.i18n import (
@@ -17,7 +20,7 @@ from app.i18n import (
     translate,
 )
 from app.selection import rows_by_indices
-from app.services.csv_export import ConversionResult, build_export_filename
+from app.services.csv_export import ConversionResult, build_export_filename, exportable_rows
 from app.settings import Settings
 from app.use_cases.convert import convert_upload
 from app.use_cases.import_records import import_selected_rows
@@ -27,9 +30,29 @@ from app.views import (
     preview_page,
 )
 
+_READ_CHUNK = 64 * 1024
+
 
 def _settings(request: Request) -> Settings:
     return request.app.state.settings
+
+
+async def _read_upload_capped(file: UploadFile, max_bytes: int) -> bytes:
+    """Read upload body with a hard byte cap (ignores missing Content-Length)."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(_READ_CHUNK)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise AppError(
+                "err.file_too_large",
+                max_mb=max(1, max_bytes // (1024 * 1024)),
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def convert_router() -> APIRouter:
@@ -86,16 +109,11 @@ def convert_router() -> APIRouter:
                 selected_account=account,
             )
 
-        content_length = request.headers.get("content-length")
-        if content_length and content_length.isdigit():
-            if int(content_length) > settings.max_upload_bytes * 2:
-                max_mb = max(1, settings.max_upload_bytes // (1024 * 1024))
-                return refuse(t("err.file_too_large", max_mb=max_mb))
-
-        content = await file.read()
         filename = file.filename or "upload.xlsx"
         try:
-            outcome = convert_upload(
+            content = await _read_upload_capped(file, settings.max_upload_bytes)
+            outcome = await run_in_threadpool(
+                convert_upload,
                 content=content,
                 filename=filename,
                 account_name=account,
@@ -126,7 +144,7 @@ def convert_router() -> APIRouter:
         job = request.app.state.jobs.get(job_id)
         if not job:
             return HTMLResponse(render_job_not_found(request), status_code=404)
-        return csv_download_response(job, job.result.rows)
+        return csv_download_response(job, exportable_rows(job.result.rows))
 
     @router.post("/download/{job_id}")
     def download_selected(
@@ -138,7 +156,7 @@ def convert_router() -> APIRouter:
         job = request.app.state.jobs.get(job_id)
         if not job:
             return HTMLResponse(render_job_not_found(request), status_code=404)
-        selected = rows_by_indices(job.result.rows, row)
+        selected = exportable_rows(rows_by_indices(job.result.rows, row))
         if not selected:
             return preview_page(
                 request,

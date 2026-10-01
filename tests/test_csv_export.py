@@ -88,6 +88,32 @@ class ConvertRowsTests(unittest.TestCase):
         self.assertEqual(row.account, "My Cash")
         self.assertEqual(row.amount, Decimal("-100.50"))
         self.assertEqual(row.currency, "UAH")
+        self.assertFalse(row.fx_blocked)
+
+    def test_missing_fx_rate_blocks_row_keeps_original_currency(self) -> None:
+        usd = _parsed(amount="-100.00")
+        usd.currency = "USD"
+        result = convert_rows(
+            [usd, _parsed(amount="-50.00")],
+            account_name="My Cash",
+            mapping_store=self.store,
+            fx=_PassthroughFx(),
+        )
+        self.assertEqual(len(result.rows), 2)
+        blocked, ok = result.rows
+        self.assertTrue(blocked.fx_blocked)
+        self.assertEqual(blocked.currency, "USD")
+        self.assertEqual(blocked.amount, Decimal("-100.00"))
+        self.assertEqual(result.fx_failures, 1)
+        self.assertFalse(ok.fx_blocked)
+        self.assertEqual(ok.currency, "UAH")
+
+        raw = build_csv(result.rows).decode("utf-8-sig")
+        reader = list(csv.DictReader(StringIO(raw)))
+        self.assertEqual(len(reader), 1)
+        self.assertEqual(reader[0]["Сума"], "-50")
+        self.assertEqual(reader[0]["Валюта"], "₴")
+        self.assertNotIn("USD", raw)
 
 
 class BuildCsvTests(unittest.TestCase):

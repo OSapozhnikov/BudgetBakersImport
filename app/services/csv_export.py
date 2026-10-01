@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from io import StringIO
-from typing import Iterable
 
 from app.errors import ErrorMessage
+from app.persistence.mapping_store import CategoryMappingStore
 from app.services.excel_parser import ParsedRow
 from app.services.fx_nbu import FxConversion, NbuFxConverter
-from app.persistence.mapping_store import CategoryMappingStore
 
 # BudgetBakers-accepted CSV layout. First letter of "Cтатус" is Latin C (U+0043).
 CSV_COLUMNS = (
@@ -40,10 +40,12 @@ class ExportRow:
     original_currency: str
     mapped: bool
     fx_converted: bool
-    fx_warning: str | None = None
+    fx_warning: ErrorMessage | None = None
     unmapped: bool = False
     counter_party: str = ""
     is_duplicate: bool = False
+    fx_blocked: bool = False
+    fp_collision: bool = False
 
 
 @dataclass
@@ -79,17 +81,27 @@ def convert_rows(
             result.warnings.append(ErrorMessage(fx_conv.warning.code, params))
         if fx_conv.converted:
             result.converted_fx_count += 1
-        elif fx_conv.original_currency != "UAH" and fx_conv.rate is None:
+
+        fx_blocked = fx_conv.original_currency != "UAH" and fx_conv.rate is None
+        if fx_blocked:
             result.fx_failures += 1
+
+        # Missing rate: keep original amount/currency and block CSV/import (fail closed).
+        if fx_blocked:
+            amount = _round2(parsed.amount)
+            currency = fx_conv.original_currency
+        else:
+            amount = fx_conv.amount_uah
+            currency = "UAH"
 
         result.rows.append(
             ExportRow(
                 date=parsed.date,
                 account=account_name,
                 category=mapped_name,
-                amount=fx_conv.amount_uah,
+                amount=amount,
                 note=parsed.note,
-                currency="UAH",
+                currency=currency,
                 bank_category=parsed.bank_category,
                 original_amount=parsed.amount,
                 original_currency=parsed.currency,
@@ -98,11 +110,16 @@ def convert_rows(
                 fx_warning=fx_conv.warning,
                 unmapped=not was_mapped and bool(parsed.bank_category),
                 counter_party=parsed.counter_party or "",
+                fx_blocked=fx_blocked,
             )
         )
 
     result.unmapped_categories = sorted(unmapped)
     return result
+
+
+def _round2(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _format_amount(amount: Decimal) -> str:
@@ -111,6 +128,11 @@ def _format_amount(amount: Decimal) -> str:
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text
+
+
+def exportable_rows(rows: Iterable[ExportRow]) -> list[ExportRow]:
+    """Rows allowed in CSV / Wallet import (excludes FX-blocked)."""
+    return [row for row in rows if not row.fx_blocked]
 
 
 def build_export_filename(account_name: str, rows: Iterable[ExportRow]) -> str:
@@ -132,7 +154,10 @@ def build_export_filename(account_name: str, rows: Iterable[ExportRow]) -> str:
 
 
 def build_csv(rows: Iterable[ExportRow]) -> bytes:
-    """Build BudgetBakers-accepted CSV (utf-8-sig, comma, CRLF, DD.MM.YYYY, ₴)."""
+    """Build BudgetBakers-accepted CSV (utf-8-sig, comma, CRLF, DD.MM.YYYY, ₴).
+
+    FX-blocked rows (missing NBU rate) are omitted.
+    """
     buf = StringIO()
     writer = csv.DictWriter(
         buf,
@@ -142,7 +167,7 @@ def build_csv(rows: Iterable[ExportRow]) -> bytes:
         quoting=csv.QUOTE_MINIMAL,
     )
     writer.writeheader()
-    for row in rows:
+    for row in exportable_rows(rows):
         writer.writerow(
             {
                 "Cтатус": COMPLETED_STATUS_LABEL,

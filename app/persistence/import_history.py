@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +54,7 @@ class ImportHistoryStore:
     ) -> ImportHistoryEntry:
         entry = ImportHistoryEntry(
             id=secrets.token_urlsafe(12),
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             filename=str(filename or ""),
             account_name=str(account_name or ""),
             account_id=str(account_id or ""),

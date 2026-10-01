@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import unittest
 
-from starlette.requests import Request
-from starlette.responses import Response
-
 from app.i18n import (
     COOKIE_NAME,
     DEFAULT_LANG,
@@ -16,6 +13,8 @@ from app.i18n import (
     set_lang_cookie,
     translate,
 )
+from starlette.requests import Request
+from starlette.responses import Response
 
 
 class NormalizeLangTests(unittest.TestCase):

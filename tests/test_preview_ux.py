@@ -11,8 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
-from fastapi.testclient import TestClient
-
+from app.errors import AppError
 from app.main import create_app
 from app.services.accounts_store import StoredAccount
 from app.services.csv_export import ConversionResult, ExportRow
@@ -20,6 +19,7 @@ from app.services.fingerprints import FingerprintStore, fingerprint_row
 from app.services.records import BudgetBakersRecordsClient, RecordImportResult
 from app.settings import Settings
 from app.use_cases.convert import mark_duplicates, select_account
+from fastapi.testclient import TestClient
 
 
 def _row(
@@ -100,7 +100,7 @@ class MarkDuplicatesTests(unittest.TestCase):
             settings=self.settings,
             lang="en",
         )
-        self.assertIsNone(warn)
+        self.assertEqual(warn, [])
         self.assertTrue(row.is_duplicate)
 
     def test_no_account_id_clears_flag(self) -> None:
@@ -146,7 +146,7 @@ class MarkDuplicatesTests(unittest.TestCase):
                 lang="en",
             )
 
-        self.assertIsNone(warn)
+        self.assertEqual(warn, [])
         self.assertTrue(row.is_duplicate)
         client.list_records.assert_called_once()
 
@@ -169,8 +169,21 @@ class MarkDuplicatesTests(unittest.TestCase):
                 settings=settings,
                 lang="en",
             )
-        self.assertIsNotNone(warn)
+        self.assertEqual(len(warn), 1)
+        self.assertEqual(warn[0].code, "preview.dedup_api_warn")
         self.assertFalse(row.is_duplicate)
+
+    def test_within_file_fingerprint_collision(self) -> None:
+        rows = [_row(note="same"), _row(note="same")]
+        warn = mark_duplicates(
+            rows,
+            account_id="acc-1",
+            fingerprint_store=self.store,
+            settings=self.settings,
+            lang="en",
+        )
+        self.assertTrue(all(r.fp_collision for r in rows))
+        self.assertTrue(any(w.code == "preview.fp_collision_warn" for w in warn))
 
 
 class ListRecordsClientTests(unittest.TestCase):
@@ -211,6 +224,41 @@ class ListRecordsClientTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertGreaterEqual(len(calls), 1)
         self.assertIn("accountId=acc-1", calls[0])
+
+    def test_list_records_hits_page_ceiling(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            offset = int(request.url.params.get("offset", "0"))
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": str(offset),
+                            "accountId": "acc-1",
+                            "recordDate": "2026-06-01T12:00:00Z",
+                            "amount": {"value": -1, "currencyCode": "UAH"},
+                        }
+                    ],
+                    "nextOffset": offset + 1,
+                },
+            )
+
+        client = BudgetBakersRecordsClient(
+            base_url="https://example.test/wallet/v1/api",
+            token="tok",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_pages=2,
+            max_items=10_000,
+        )
+        with client:
+            with self.assertRaises(AppError) as ctx:
+                client.list_records(
+                    account_id="acc-1",
+                    date_from=date(2026, 6, 1),
+                    date_to=date(2026, 6, 30),
+                    page_size=1,
+                )
+        self.assertEqual(ctx.exception.code, "wallet.pagination_limit")
 
 
 class PreviewUxRouteTests(unittest.TestCase):

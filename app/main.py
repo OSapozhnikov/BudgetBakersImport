@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.jobs import JobStore
+from app.middleware import SameOriginMiddleware
 from app.persistence.accounts_store import AccountsStore
 from app.persistence.category_cache import CategoryCacheStore
 from app.persistence.fingerprints import FingerprintStore
@@ -33,9 +34,20 @@ def _configure_logging(level: str) -> None:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    if settings.web_concurrency != 1:
+        raise RuntimeError(
+            "WEB_CONCURRENCY must be 1: conversion jobs are in-memory and not shared"
+        )
     _configure_logging(settings.log_level)
 
-    app = FastAPI(title="BudgetBakers Excel → CSV", version=__version__)
+    app = FastAPI(
+        title="BudgetBakers Excel → CSV",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.add_middleware(SameOriginMiddleware)
     templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
     app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 

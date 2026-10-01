@@ -54,14 +54,27 @@ def mark_duplicates(
     fingerprint_store: FingerprintStore,
     settings: Settings,
     lang: str,
-) -> ErrorMessage | None:
-    """Set ``is_duplicate`` from local store and optional Wallet GET /records."""
+) -> list[ErrorMessage]:
+    """Set ``is_duplicate`` / ``fp_collision`` from local store, Wallet, and in-file collisions."""
+    warnings: list[ErrorMessage] = []
     if not rows:
-        return None
+        return warnings
 
     local = fingerprint_store.load()
+    if len(local) >= settings.fingerprint_warn_count:
+        logging.warning(
+            "Fingerprint store has %s entries (warn threshold %s)",
+            len(local),
+            settings.fingerprint_warn_count,
+        )
+        warnings.append(
+            ErrorMessage(
+                "preview.fingerprints_large",
+                {"count": len(local), "threshold": settings.fingerprint_warn_count},
+            )
+        )
+
     api_fps: set[str] = set()
-    api_warning: ErrorMessage | None = None
     token = settings.budgetbakers_api_token.strip()
     acc_id = (account_id or "").strip()
 
@@ -71,6 +84,8 @@ def mark_duplicates(
             with BudgetBakersRecordsClient(
                 base_url=settings.budgetbakers_api_base,
                 token=settings.budgetbakers_api_token,
+                max_pages=settings.max_wallet_pages,
+                max_items=settings.max_wallet_items,
             ) as client:
                 api_items = client.list_records(
                     account_id=acc_id,
@@ -83,16 +98,36 @@ def mark_duplicates(
                     api_fps.add(fp)
         except Exception as exc:  # noqa: BLE001
             logging.warning("Optional GET /records dedup failed: %s", exc)
-            api_warning = ErrorMessage("preview.dedup_api_warn")
+            warnings.append(ErrorMessage("preview.dedup_api_warn"))
+
+    # Within-file collisions (same account/date/amount/note/counterparty).
+    seen_fp: dict[str, int] = {}
+    collision_fps: set[str] = set()
+    if acc_id:
+        for row in rows:
+            if row.fx_blocked:
+                continue
+            fp = fingerprint_row(row, acc_id)
+            if fp in seen_fp:
+                collision_fps.add(fp)
+            else:
+                seen_fp[fp] = 1
 
     for row in rows:
         if not acc_id:
             row.is_duplicate = False
+            row.fp_collision = False
             continue
         fp = fingerprint_row(row, acc_id)
-        row.is_duplicate = fp in local or fp in api_fps
+        row.fp_collision = fp in collision_fps and not row.fx_blocked
+        row.is_duplicate = (fp in local or fp in api_fps) and not row.fx_blocked
 
-    return api_warning
+    if collision_fps:
+        warnings.append(
+            ErrorMessage("preview.fp_collision_warn", {"n": len(collision_fps)})
+        )
+
+    return warnings
 
 
 def convert_upload(
@@ -123,7 +158,11 @@ def convert_upload(
         raise AppError("err.file_too_large", max_mb=max_mb)
 
     try:
-        parsed = parse_excel(content)
+        parsed = parse_excel(
+            content,
+            max_rows=settings.max_excel_rows,
+            max_uncompressed_bytes=settings.max_excel_uncompressed_bytes,
+        )
     except AppError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -149,15 +188,15 @@ def convert_upload(
 
     stored = next((a for a in accounts if a.name == account_name), None)
     account_id = stored.id if stored else None
-    dedup_warning = mark_duplicates(
+    dedup_warnings = mark_duplicates(
         result.rows,
         account_id=account_id,
         fingerprint_store=fingerprint_store,
         settings=settings,
         lang=lang,
     )
-    if dedup_warning:
-        result.warnings = merge_messages(result.warnings, [dedup_warning])
+    if dedup_warnings:
+        result.warnings = merge_messages(result.warnings, dedup_warnings)
 
     prefs_store.set_last_account_name(account_name)
     job_id = jobs.put(result, account_name, filename, account_id=account_id)

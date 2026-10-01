@@ -40,6 +40,10 @@
   "preview.filter_fx": "FX",
   "preview.filter_hint": "Фільтр лише ховає рядки; позначки прихованих рядків лишаються для імпорту/CSV.",
   "preview.tag_duplicate": "вже імпортовано",
+  "preview.tag_fx_blocked": "немає курсу",
+  "preview.tag_fp_collision": "збіг у файлі",
+  "preview.fp_collision_warn": "У файлі {n} груп рядків з однаковим відбитком (дата/сума/опис) — позначки зняті.",
+  "preview.fingerprints_large": "Локальна історія відбитків велика ({count}; поріг {threshold}).",
   "preview.duplicates_banner": "Знайдено {n} можливих дублікатів (позначка знята за замовчуванням).",
   "preview.dedup_api_warn": "Не вдалося перевірити дублікати через Wallet API — використано лише локальну історію.",
   "preview.export_file": "Файл експорту:",
@@ -130,6 +134,7 @@
   "err.job_not_found": "Завдання не знайдено або вже протерміноване. {link}Завантажте файл знову{/link}.",
   "err.pick_rows_csv": "Оберіть хоча б одну операцію для завантаження CSV.",
   "err.already_imported": "Це завдання вже імпортовано.",
+  "err.fx_blocked_only": "Обрані рядки без курсу НБУ — їх не можна імпортувати.",
   "err.no_rows_import": "Немає рядків для імпорту.",
   "err.pick_rows_import": "Оберіть хоча б одну операцію для імпорту.",
   "err.need_token": "Спочатку задайте BUDGETBAKERS_API_TOKEN.",
@@ -145,6 +150,11 @@
   "err.account_empty_name": "Назва рахунку порожня.",
   "err.row_not_found": "Рядок не знайдено.",
   "err.file_too_large": "Файл завеликий (макс. {max_mb} МіБ).",
+  "err.excel_too_large": "Excel-архів завеликий після розпакування (макс. {max_mb} МіБ).",
+  "err.excel_too_many_rows": "Забагато рядків у файлі (макс. {max_rows}).",
+  "err.data_corrupt": "Файл даних пошкоджений ({path}). Відновіть з .bak або виправте вручну.",
+  "err.data_unreadable": "Не вдалося прочитати файл даних ({path}): {exc}",
+  "err.refresh_failed": "Не вдалося оновити дані з BudgetBakers API.",
   "parse.missing_columns": "Не знайдено обов'язкові колонки: {missing}. Заголовки файлу: {headers}",
   "parse.empty_date": "порожня дата",
   "parse.bad_date": "невідомий формат дати: {value}",
@@ -164,5 +174,6 @@
   "wallet.network": "Помилка мережі: {exc}",
   "wallet.empty_account": "accountId порожній.",
   "wallet.item_error": "Помилка створення запису.",
-  "wallet.missing_item": "Немає результату для цього рядка в відповіді API."
+  "wallet.missing_item": "Немає результату для цього рядка в відповіді API.",
+  "wallet.pagination_limit": "BudgetBakers API: забагато сторінок/записів для {resource} (ліміт пагінації)."
 }
